@@ -94,11 +94,12 @@ func main() {
 		}
 	}
 
-	// Read loaded identity for whoami display
+	// Identity for whoami display comes from the auth.romaine.life token's
+	// email claim. There is no local .identity file anymore — the loaded
+	// token (written by `authromaine`) is the single source of identity.
 	identity := ""
-	identityFile := filepath.Join(cfgDir, ".identity")
-	if data, err := os.ReadFile(identityFile); err == nil {
-		identity = strings.TrimSpace(string(data))
+	if token, err := frontend.ReadAuthToken(cfgDir); err == nil {
+		identity = frontend.EmailFromToken(token)
 	}
 
 	// Read persisted menu version for conflict detection on save
@@ -134,12 +135,7 @@ func main() {
 		UpdateAssetPrefix:  "fzt-automate",
 		UpdateBinaryName:   "fzt-automate",
 		FrontendCommands: []core.CommandItem{
-			{Name: "load", Description: "Load an identity profile", Children: []core.CommandItem{
-				{Name: "load-nelson", Description: "Personal account", Action: "load-nelson"},
-				{Name: "load-nelson-ea", Description: "Engineered Arts", Action: "load-nelson-ea"},
-				{Name: "load-nelson-r1", Description: "R1", Action: "load-nelson-r1"},
-			}},
-			{Name: "unload", Description: "Clear loaded identity", Action: "unload"},
+			{Name: "unload", Description: "Clear local menu cache", Action: "unload"},
 			{Name: "sync", Description: "Sync menu from cloud", Action: "sync"},
 			frontend.EditCommands(),
 			{Name: "update", Description: "Update fzt-automate to latest release", Action: "update"},
@@ -174,12 +170,12 @@ func main() {
 	}
 
 	if result == "unloaded" {
-		fmt.Fprintln(os.Stderr, "identity unloaded")
+		fmt.Fprintln(os.Stderr, "menu cache cleared")
 		tui.PauseIfInteractive()
 		os.Exit(130)
 	}
 
-	if result == "loaded" || result == "synced" {
+	if result == "synced" {
 		fmt.Fprintln(os.Stderr, "synced — reopen to see menu")
 		tui.PauseIfInteractive()
 		os.Exit(130)
