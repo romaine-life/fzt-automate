@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   update:
-    uses: nelsong6/pipeline-templates/.github/workflows/go-dependency-update-template.yml@main
+    uses: romaine-life/pipeline-templates/.github/workflows/go-dependency-update-template.yml@main
     with:
       modules: github.com/nelsong6/fzt github.com/nelsong6/fzt-terminal
       # Leaf with binary artifacts: atomic release (no downstream dispatch),
