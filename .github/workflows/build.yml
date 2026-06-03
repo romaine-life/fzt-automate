@@ -46,7 +46,7 @@ jobs:
       - run: >
           go build
           -ldflags="-X github.com/romaine-life/fzt/render.Version=${{ inputs.tag }}
-          -X github.com/nelsong6/fzt-frontend.EngineVersion=${{ steps.engine.outputs.version }}"
+          -X github.com/romaine-life/fzt-frontend.EngineVersion=${{ steps.engine.outputs.version }}"
           -o ${{ matrix.output }} .
         env:
           GOOS: ${{ matrix.goos }}
