@@ -24,10 +24,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nelsong6/fzt/core"
-	"github.com/nelsong6/fzt/render"
-	frontend "github.com/nelsong6/fzt-frontend"
-	"github.com/nelsong6/fzt-terminal/tui"
+	"github.com/romaine-life/fzt/core"
+	"github.com/romaine-life/fzt/render"
+	frontend "github.com/romaine-life/fzt-frontend"
+	"github.com/romaine-life/fzt-terminal/tui"
 )
 
 // configDir returns the directory holding fzt-automate's menu cache and state.
@@ -131,7 +131,7 @@ func main() {
 		InitialDisplay:  identity,
 		ConfigDir:          cfgDir,
 		InitialMenuVersion: menuVersion,
-		UpdateRepo:         "nelsong6/fzt-automate",
+		UpdateRepo:         "romaine-life/fzt-automate",
 		UpdateAssetPrefix:  "fzt-automate",
 		UpdateBinaryName:   "fzt-automate",
 		FrontendCommands: []core.CommandItem{

@@ -22,7 +22,7 @@ import (
 
 func main() {
 	binVersion := gitDescribe(".")
-	engineVersion := goModVersion("github.com/nelsong6/fzt")
+	engineVersion := goModVersion("github.com/romaine-life/fzt")
 
 	binName := "fzt-automate"
 	if runtime.GOOS == "windows" {
@@ -30,7 +30,7 @@ func main() {
 	}
 
 	ldflags := fmt.Sprintf(
-		"-X github.com/nelsong6/fzt/render.Version=%s -X github.com/nelsong6/fzt-frontend.EngineVersion=%s",
+		"-X github.com/romaine-life/fzt/render.Version=%s -X github.com/nelsong6/fzt-frontend.EngineVersion=%s",
 		binVersion, engineVersion,
 	)
 

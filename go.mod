@@ -1,11 +1,11 @@
-module github.com/nelsong6/fzt-automate
+module github.com/romaine-life/fzt-automate
 
 go 1.26.1
 
 require (
-	github.com/nelsong6/fzt v0.2.73
-	github.com/nelsong6/fzt-frontend v0.1.33
-	github.com/nelsong6/fzt-terminal v0.1.97
+	github.com/romaine-life/fzt v0.2.74
+	github.com/romaine-life/fzt-frontend v0.1.34
+	github.com/romaine-life/fzt-terminal v0.1.98
 )
 
 require (
