@@ -1,7 +1,7 @@
 name: Dependency Update
 
 # Auto-trigger disabled — Claude-driven CI. Run manually via
-# `gh workflow run dispatch.yml -R nelsong6/fzt-automate`.
+# `gh workflow run dispatch.yml -R romaine-life/fzt-automate`.
 on:
   workflow_dispatch:
 
@@ -23,7 +23,7 @@ jobs:
   update:
     uses: romaine-life/pipeline-templates/.github/workflows/go-dependency-update-template.yml@main
     with:
-      modules: github.com/nelsong6/fzt github.com/nelsong6/fzt-terminal
+      modules: github.com/romaine-life/fzt github.com/romaine-life/fzt-terminal
       # Leaf with binary artifacts: atomic release (no downstream dispatch),
       # then fire build.yml with the new tag to build + upload the three
       # OS binaries to the existing release.

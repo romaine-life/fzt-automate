@@ -41,11 +41,11 @@ jobs:
 
       - name: Get engine version from go.mod
         id: engine
-        run: echo "version=$(grep 'github.com/nelsong6/fzt ' go.mod | awk '{print $2}')" >> $GITHUB_OUTPUT
+        run: echo "version=$(grep 'github.com/romaine-life/fzt ' go.mod | awk '{print $2}')" >> $GITHUB_OUTPUT
 
       - run: >
           go build
-          -ldflags="-X github.com/nelsong6/fzt/render.Version=${{ inputs.tag }}
+          -ldflags="-X github.com/romaine-life/fzt/render.Version=${{ inputs.tag }}
           -X github.com/nelsong6/fzt-frontend.EngineVersion=${{ steps.engine.outputs.version }}"
           -o ${{ matrix.output }} .
         env:
