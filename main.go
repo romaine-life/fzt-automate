@@ -137,6 +137,7 @@ func main() {
 		FrontendCommands: []core.CommandItem{
 			{Name: "unload", Description: "Clear local menu cache", Action: "unload"},
 			{Name: "sync", Description: "Sync menu from cloud", Action: "sync"},
+			{Name: "save", Description: "Save changes to cloud", Action: "save"},
 			frontend.EditCommands(),
 			{Name: "update", Description: "Update fzt-automate to latest release", Action: "update"},
 			{Name: "states", Description: "Toggle state inspector banner (suppresses action execution)", Action: "toggle-states"},
