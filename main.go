@@ -109,6 +109,9 @@ func main() {
 		menuVersion, _ = strconv.Atoi(strings.TrimSpace(string(data)))
 	}
 
+	// Before the header goes in front: ParentIdx counts from the first menu item.
+	folders := newCommandFolders(items)
+
 	if header != "" {
 		headerFields := strings.Split(header, "\t")
 		headerItem := core.Item{Fields: headerFields, Depth: -1}
@@ -129,6 +132,7 @@ func main() {
 		FrontendName:    "automate",
 		FrontendVersion: render.Version,
 		InitialDisplay:  identity,
+		Provider:        folders,
 		ConfigDir:          cfgDir,
 		InitialMenuVersion: menuVersion,
 		UpdateRepo:         "romaine-life/fzt-automate",
@@ -184,7 +188,7 @@ func main() {
 
 	// Look up the selected item to check for action overrides.
 	// URL action = bookmark (open in browser). Command action = stable identifier (survives renames).
-	for _, item := range items {
+	for _, item := range append(items, folders.loaded...) {
 		if len(item.Fields) > 0 && item.Fields[0] == result {
 			if item.Action != nil {
 				fmt.Println(item.Action.Target)
