@@ -20,7 +20,6 @@ const folderPrefix = "folder:"
 // then a tab and the action run when the child is picked.
 type commandFolders struct {
 	commands map[string]string // folder path, as core.ItemFullPath builds it -> command
-	loaded   []core.Item       // every child loaded so far, for looking up the pick
 }
 
 // newCommandFolders turns every "folder:" item into a folder with no children
@@ -81,7 +80,6 @@ func (p *commandFolders) LoadChildren(parentPath string) []core.Item {
 		}
 		children = append(children, item)
 	}
-	p.loaded = append(p.loaded, children...)
 	return children
 }
 

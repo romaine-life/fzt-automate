@@ -38,9 +38,6 @@ func TestCommandFolders(t *testing.T) {
 	if len(two.Fields) != 1 || two.Fields[0] != "two" || two.Action != nil {
 		t.Errorf("second child: %+v", two)
 	}
-	if len(p.loaded) != 2 {
-		t.Errorf("loaded children not kept for the pick lookup: %d", len(p.loaded))
-	}
 	if p.LoadChildren(itemPath(items, 0)) != nil {
 		t.Error("a menu folder that isn't a command folder loaded children")
 	}

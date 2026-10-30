@@ -178,39 +178,34 @@ func main() {
 		},
 	}
 
-	result, err := tui.Run(items, cfg)
+	pick, err := tui.Run(items, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
 		os.Exit(1)
 	}
 
-	if result == "" {
+	switch {
+	case pick.Kind == "cancel":
 		os.Exit(130)
-	}
-
-	if result == "unloaded" {
+	case pick.Kind == "command" && pick.Output == "unloaded":
 		fmt.Fprintln(os.Stderr, "menu cache cleared")
 		tui.PauseIfInteractive()
 		os.Exit(130)
-	}
-
-	if result == "synced" {
+	case pick.Kind == "command" && pick.Output == "synced":
 		fmt.Fprintln(os.Stderr, "synced — reopen to see menu")
 		tui.PauseIfInteractive()
 		os.Exit(130)
 	}
 
-	// Look up the selected item to check for action overrides.
-	// URL action = bookmark (open in browser). Command action = stable identifier (survives renames).
-	for _, item := range append(items, folders.loaded...) {
-		if len(item.Fields) > 0 && item.Fields[0] == result {
-			if item.Action != nil {
-				fmt.Println(item.Action.Target)
-				os.Exit(0)
-			}
-			break
-		}
-	}
+	fmt.Println(pickLine(pick))
+}
 
-	fmt.Println(result)
+// pickLine is the line the at wrapper runs for a pick: the picked item's
+// action (a URL opens in the browser; a command survives renames), else what
+// the picker printed for it.
+func pickLine(pick tui.Pick) string {
+	if pick.Kind == "select" && pick.Item.Action != nil {
+		return pick.Item.Action.Target
+	}
+	return pick.Output
 }
