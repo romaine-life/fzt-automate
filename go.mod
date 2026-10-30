@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/romaine-life/fzt v0.2.75
-	github.com/romaine-life/fzt-frontend v0.1.34
+	github.com/romaine-life/fzt-frontend v0.1.35
 	github.com/romaine-life/fzt-terminal v0.1.101
 )
 
