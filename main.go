@@ -14,6 +14,7 @@
 //
 //	fzt-automate
 //	fzt-automate --title "What would you like to do?"
+//	fzt-automate --sync    # pull the menu into the cache, without the picker
 package main
 
 import (
@@ -58,6 +59,7 @@ func main() {
 
 	title := "What would you like to do?"
 	header := "Name\tDescription"
+	syncOnly := false
 
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
@@ -72,6 +74,8 @@ func main() {
 				header = args[i+1]
 				i++
 			}
+		case "--sync":
+			syncOnly = true
 		case "--version":
 			fmt.Println(render.Version)
 			os.Exit(0)
@@ -84,6 +88,16 @@ func main() {
 		os.Exit(1)
 	}
 	cacheFile := filepath.Join(cfgDir, "menu-cache.yaml")
+
+	if syncOnly {
+		n, version, err := frontend.SyncMenu(cfgDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fzt-automate: sync: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("synced %d items, menu version %d\n", n, version)
+		os.Exit(0)
+	}
 
 	var items []core.Item
 	if _, err := os.Stat(cacheFile); err == nil {
