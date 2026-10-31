@@ -81,7 +81,7 @@ func echoLines(lines ...string) string {
 		}
 		return "Write-Output " + strings.Join(parts, ",")
 	}
-	return "printf '%s\\n' " + strings.Join(lines, " ")
+	return "printf '%s\\n' '" + strings.Join(lines, "' '") + "'"
 }
 
 func TestQuickRunShowsTheResultAndMarksAnOverrun(t *testing.T) {
