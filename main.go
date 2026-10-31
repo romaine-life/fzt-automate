@@ -15,6 +15,7 @@
 //	fzt-automate
 //	fzt-automate --title "What would you like to do?"
 //	fzt-automate --sync    # pull the menu into the cache, without the picker
+//	fzt-automate --system  # the long-lived system at: runs picks itself (system.go)
 package main
 
 import (
@@ -60,6 +61,7 @@ func main() {
 	title := "What would you like to do?"
 	header := "Name\tDescription"
 	syncOnly := false
+	system := false
 
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
@@ -76,6 +78,8 @@ func main() {
 			}
 		case "--sync":
 			syncOnly = true
+		case "--system":
+			system = true
 		case "--version":
 			fmt.Println(render.Version)
 			os.Exit(0)
@@ -99,13 +103,12 @@ func main() {
 		os.Exit(0)
 	}
 
-	var items []core.Item
-	if _, err := os.Stat(cacheFile); err == nil {
-		items, err = core.LoadYAML(cacheFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
-			os.Exit(1)
-		}
+	folders := &commandFolders{}
+	load := func() ([]core.Item, error) { return loadMenu(cacheFile, header, folders) }
+	items, err := load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Identity for whoami display comes from the auth.romaine.life token's
@@ -116,21 +119,7 @@ func main() {
 		identity = frontend.EmailFromToken(token)
 	}
 
-	// Read persisted menu version for conflict detection on save
-	menuVersion := 0
-	versionFile := filepath.Join(cfgDir, ".menu-version")
-	if data, err := os.ReadFile(versionFile); err == nil {
-		menuVersion, _ = strconv.Atoi(strings.TrimSpace(string(data)))
-	}
-
-	// Before the header goes in front: ParentIdx counts from the first menu item.
-	folders := newCommandFolders(items)
-
-	if header != "" {
-		headerFields := strings.Split(header, "\t")
-		headerItem := core.Item{Fields: headerFields, Depth: -1}
-		items = append([]core.Item{headerItem}, items...)
-	}
+	menuVersion := readMenuVersion(cfgDir)
 
 	cfg := tui.Config{
 		Layout:          "reverse",
@@ -178,6 +167,17 @@ func main() {
 		},
 	}
 
+	if system {
+		if err := runSystem(cfgDir, items, cfg, func() ([]core.Item, int, error) {
+			items, err := load()
+			return items, readMenuVersion(cfgDir), err
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	pick, err := tui.Run(items, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
@@ -204,8 +204,41 @@ func main() {
 // action (a URL opens in the browser; a command survives renames), else what
 // the picker printed for it.
 func pickLine(pick tui.Pick) string {
+	if pick.Kind == "input" && pick.Item.Input != "" {
+		// An entry that declares an input runs with the typed text as its argument.
+		_, line := classify(pick.Item, pick.Text, true)
+		return line
+	}
 	if pick.Kind == "select" && pick.Item.Action != nil {
 		return pick.Item.Action.Target
 	}
 	return pick.Output
+}
+
+// loadMenu reads the menu cache (none yet is an empty menu), points the
+// command-folder provider at it and puts the header row in front.
+func loadMenu(cacheFile, header string, folders *commandFolders) ([]core.Item, error) {
+	var items []core.Item
+	if _, err := os.Stat(cacheFile); err == nil {
+		if items, err = core.LoadYAML(cacheFile); err != nil {
+			return nil, err
+		}
+	}
+	// Before the header goes in front: ParentIdx counts from the first menu item.
+	folders.reset(items)
+	if header != "" {
+		items = append([]core.Item{{Fields: strings.Split(header, "\t"), Depth: -1}}, items...)
+	}
+	return items, nil
+}
+
+// readMenuVersion is the menu version saved by the last sync, for conflict
+// detection on save.
+func readMenuVersion(cfgDir string) int {
+	data, err := os.ReadFile(filepath.Join(cfgDir, ".menu-version"))
+	if err != nil {
+		return 0
+	}
+	v, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+	return v
 }

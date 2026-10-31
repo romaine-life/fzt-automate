@@ -26,7 +26,15 @@ type commandFolders struct {
 // yet, and returns the provider that fills them. The folder keeps its action,
 // so saving the menu keeps it a command folder.
 func newCommandFolders(items []core.Item) *commandFolders {
-	p := &commandFolders{commands: map[string]string{}}
+	p := &commandFolders{}
+	p.reset(items)
+	return p
+}
+
+// reset points the provider at a new menu: a long-lived menu keeps one
+// provider across reloads.
+func (p *commandFolders) reset(items []core.Item) {
+	p.commands = map[string]string{}
 	for i := range items {
 		a := items[i].Action
 		if a == nil || a.Type != "command" || !strings.HasPrefix(a.Target, folderPrefix) {
@@ -35,7 +43,13 @@ func newCommandFolders(items []core.Item) *commandFolders {
 		items[i].HasChildren = true
 		p.commands[itemPath(items, i)] = strings.TrimPrefix(a.Target, folderPrefix)
 	}
-	return p
+}
+
+// Volatile: a command folder lists live state (the open windows), so it is
+// read again every time it is entered.
+func (p *commandFolders) Volatile(parentPath string) bool {
+	_, ok := p.commands[parentPath]
+	return ok
 }
 
 // itemPath matches core.ItemFullPath for menu names, which are never drive letters.
@@ -71,7 +85,8 @@ func (p *commandFolders) LoadChildren(parentPath string) []core.Item {
 			continue
 		}
 		f := strings.Split(line, "\t")
-		item := core.Item{Fields: f[:1], PropertyOf: -1}
+		// A folder's rows pick something (a window, a program): quick, never a takeover.
+		item := core.Item{Fields: f[:1], PropertyOf: -1, Quick: true}
 		if len(f) > 1 && f[1] != "" {
 			item.Fields = append(item.Fields, f[1])
 		}
@@ -89,9 +104,13 @@ func shellCommand(command string) *exec.Cmd {
 	if runtime.GOOS != "windows" {
 		return exec.Command("sh", "-c", command)
 	}
-	shell := "pwsh"
-	if _, err := exec.LookPath(shell); err != nil {
-		shell = "powershell"
+	return exec.Command(powershell(), "-NoProfile", "-NonInteractive", "-Command", command)
+}
+
+// powershell is pwsh where installed, else Windows PowerShell.
+func powershell() string {
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return "pwsh"
 	}
-	return exec.Command(shell, "-NoProfile", "-NonInteractive", "-Command", command)
+	return "powershell"
 }
