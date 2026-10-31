@@ -184,7 +184,7 @@ func (m *systemMenu) runQuick(item core.Item, name, line string, live liveMenu) 
 
 // runTakeover opens the command as a new tmux window right after this one.
 // tmux creates it in the background and switches to it once its program has
-// drawn (tmux-windows-fork, FZT-64), so the screen never shows a blank pane;
+// drawn (tmux-windows-fork `new-window -W`, FZT-64), so the screen never shows a blank pane;
 // until then the menu is frozen with the panel saying so, and Escape stops
 // waiting, leaving the window where it is.
 func (m *systemMenu) runTakeover(name, line string, live liveMenu) {
