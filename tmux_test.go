@@ -9,8 +9,8 @@ import (
 	"github.com/romaine-life/fzt/core"
 )
 
-// display-palette's rows: depth, name, description, hint, id.
-const paletteRows = "0\tsplit-window\tSplit a pane\t\t0\n" +
+// display-palette's rows: depth, name, description, hint, id, tags.
+const paletteRows = "0\tsplit-window\tSplit a pane\t\t0\tsplit window,pane\n" +
 	"0\trename-window\tRename the window\tnew name\t1\n" +
 	"0\tmove-tab\tMove this tab\t\t2\n" +
 	"1\tsession-a\t\t\t3\n" +
@@ -35,6 +35,12 @@ func TestGraftTmuxBuildsTheFolder(t *testing.T) {
 	}
 	if strings.Join(names, ",") != "split-window,rename-window,move-tab,reopen-tab" {
 		t.Fatalf("tmux folder holds %v", names)
+	}
+	if got := strings.Join(items[2].Tags, "|"); got != "split|window|pane" {
+		t.Fatalf("split-window tags = %q", got)
+	}
+	if len(items[3].Tags) != 0 {
+		t.Fatalf("a row with no tags got %v", items[3].Tags)
 	}
 	rename, move := items[3], items[4]
 	if rename.Input != "new name" || rename.Action.Target != "1" || rename.Path != "tmux › rename-window" {
