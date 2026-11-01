@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/romaine-life/fzt/core"
 )
@@ -34,7 +35,7 @@ const (
 )
 
 // readTmuxRows reads display-palette's rows: depth, name, description, the
-// hint of a row that asks for text, and id, separated by tabs.
+// hint of a row that asks for text, id and tags, separated by tabs.
 func readTmuxRows(r io.Reader) ([]string, error) {
 	var rows []string
 	sc := bufio.NewScanner(r)
@@ -89,6 +90,10 @@ func graftTmux(items []core.Item, rows []string) []core.Item {
 			PropertyOf: -1,
 			Injected:   true,
 		})
+		if len(f) > 5 {
+			// For tag search (FZT-67): separated by spaces or commas, as fzt's --tags-col.
+			items[idx].Tags = strings.FieldsFunc(f[5], func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+		}
 		items[parent].Children = append(items[parent].Children, idx)
 		if parent != folder {
 			// A row with rows under it is a sub-menu: entering it is the pick.
