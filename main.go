@@ -15,7 +15,9 @@
 //	fzt-automate
 //	fzt-automate --title "What would you like to do?"
 //	fzt-automate --sync    # pull the menu into the cache, without the picker
-//	fzt-automate --system  # the long-lived system at: runs picks itself (system.go)
+//	fzt-automate --popup --window @3 --client /dev/pty0 [--open tmux] < rows
+//	                       # the popup at over a tab, run by tmux's display-palette
+//	                       # with its rows on stdin: runs picks itself (popup.go)
 package main
 
 import (
@@ -61,7 +63,8 @@ func main() {
 	title := "What would you like to do?"
 	header := "Name\tDescription"
 	syncOnly := false
-	system := false
+	popup := false
+	var window, client, open string
 
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
@@ -78,8 +81,20 @@ func main() {
 			}
 		case "--sync":
 			syncOnly = true
-		case "--system":
-			system = true
+		case "--popup":
+			popup = true
+		case "--window", "--client", "--open":
+			if i+1 < len(args) {
+				switch args[i] {
+				case "--window":
+					window = args[i+1]
+				case "--client":
+					client = args[i+1]
+				case "--open":
+					open = args[i+1]
+				}
+				i++
+			}
 		case "--version":
 			fmt.Println(render.Version)
 			os.Exit(0)
@@ -103,8 +118,23 @@ func main() {
 		os.Exit(0)
 	}
 
+	var tmuxRows []string
+	if popup {
+		rows, err := readTmuxRows(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fzt-automate: reading tmux's rows: %v\n", err)
+			os.Exit(1)
+		}
+		tmuxRows = rows
+		// The popup runs in tmux's environment, not a shell's: the at commands
+		// reach PATH through AT_SCRIPTS, which tmux holds (set-fzt.ps1).
+		if dir := os.Getenv("AT_SCRIPTS"); dir != "" {
+			os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		}
+	}
+
 	folders := &commandFolders{}
-	load := func() ([]core.Item, error) { return loadMenu(cacheFile, header, folders) }
+	load := func() ([]core.Item, error) { return loadMenu(cacheFile, header, tmuxRows, folders) }
 	items, err := load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
@@ -167,11 +197,15 @@ func main() {
 		},
 	}
 
-	if system {
-		if err := runSystem(cfgDir, items, cfg, func() ([]core.Item, int, error) {
+	if popup {
+		if open != "" {
+			cfg.StartFolder = []string{open}
+		}
+		m := &popupMenu{cfgDir: cfgDir, window: window, client: client, out: os.Stdout, load: func() ([]core.Item, int, error) {
 			items, err := load()
 			return items, readMenuVersion(cfgDir), err
-		}); err != nil {
+		}}
+		if err := runPopup(m, items, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
 			os.Exit(1)
 		}
@@ -215,15 +249,17 @@ func pickLine(pick tui.Pick) string {
 	return pick.Output
 }
 
-// loadMenu reads the menu cache (none yet is an empty menu), points the
-// command-folder provider at it and puts the header row in front.
-func loadMenu(cacheFile, header string, folders *commandFolders) ([]core.Item, error) {
+// loadMenu reads the menu cache (none yet is an empty menu), adds tmux's rows
+// as the tmux folder, points the command-folder provider at it and puts the
+// header row in front.
+func loadMenu(cacheFile, header string, tmuxRows []string, folders *commandFolders) ([]core.Item, error) {
 	var items []core.Item
 	if _, err := os.Stat(cacheFile); err == nil {
 		if items, err = core.LoadYAML(cacheFile); err != nil {
 			return nil, err
 		}
 	}
+	items = graftTmux(items, tmuxRows)
 	// Before the header goes in front: ParentIdx counts from the first menu item.
 	folders.reset(items)
 	if header != "" {

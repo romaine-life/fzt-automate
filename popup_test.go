@@ -10,21 +10,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/romaine-life/fzt-terminal/tui"
 	"github.com/romaine-life/fzt/core"
 )
 
-// fakeLive applies the system at's menu changes to a state, as the menu
+// fakeLive applies the popup's menu changes to a state, as the menu
 // goroutine would.
 type fakeLive struct {
 	mu     sync.Mutex
 	s      core.State
 	abort  func()
 	reload []core.Item
+	closed bool
 }
 
 func (f *fakeLive) Update(fn func(*core.State)) { f.mu.Lock(); fn(&f.s); f.mu.Unlock() }
 func (f *fakeLive) Reload(items []core.Item)    { f.mu.Lock(); f.reload = items; f.mu.Unlock() }
 func (f *fakeLive) OnAbort(fn func())           { f.mu.Lock(); f.abort = fn; f.mu.Unlock() }
+func (f *fakeLive) Close()                      { f.mu.Lock(); f.closed = true; f.mu.Unlock() }
 
 // settled waits for the command to finish: the menu unfrozen again.
 func (f *fakeLive) settled(t *testing.T) core.State {
@@ -86,7 +89,7 @@ func echoLines(lines ...string) string {
 
 func TestQuickRunShowsTheResultAndMarksAnOverrun(t *testing.T) {
 	dir := t.TempDir()
-	m := &systemMenu{cfgDir: dir, overruns: map[string]bool{}}
+	m := &popupMenu{cfgDir: dir, overruns: map[string]bool{}}
 	live := &fakeLive{}
 
 	item := cmdItem("lightson", echoLines("one", "two", "three", "four"), true)
@@ -117,7 +120,7 @@ func TestQuickRunShowsTheResultAndMarksAnOverrun(t *testing.T) {
 }
 
 func TestQuickRunFailureAndSilence(t *testing.T) {
-	m := &systemMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}
+	m := &popupMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}
 	live := &fakeLive{}
 	m.runQuick(cmdItem("bad", "exit 3", true), "bad", "exit 3", live)
 	if s := live.settled(t); s.Panel.Style != core.PanelFailed || s.Panel.Lines[0] != "bad failed (exit 3)" {
@@ -131,7 +134,7 @@ func TestQuickRunFailureAndSilence(t *testing.T) {
 }
 
 func TestEscapeStopsAQuickRun(t *testing.T) {
-	m := &systemMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}
+	m := &popupMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}
 	live := &fakeLive{}
 	slow := "sleep 30"
 	if runtime.GOOS == "windows" {
@@ -157,13 +160,38 @@ func TestEscapeStopsAQuickRun(t *testing.T) {
 	}
 }
 
-func TestTakeoverOutsideTmuxSaysSo(t *testing.T) {
-	t.Setenv("TMUX_PANE", "")
-	m := &systemMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}
+func TestTakeoverWithoutItsTabSaysSo(t *testing.T) {
+	m := &popupMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}
 	live := &fakeLive{}
 	m.runTakeover("spt", "spt", live)
-	if s := live.s; s.Frozen || s.Panel.Style != core.PanelFailed || !strings.Contains(s.Panel.Lines[0], "isn't running in tmux") {
-		t.Fatalf("panel = %+v frozen %v", s.Panel, s.Frozen)
+	if s := live.s; s.Frozen || live.closed || s.Panel.Style != core.PanelFailed || !strings.Contains(s.Panel.Lines[0], "which tab") {
+		t.Fatalf("panel = %+v frozen %v closed %v", s.Panel, s.Frozen, live.closed)
+	}
+}
+
+func TestTakeoverOpensAfterTheTabForItsClient(t *testing.T) {
+	args, err := takeoverArgs("@3", "/dev/pty0", "spt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(args, " ")
+	if !strings.HasPrefix(got, "new-window -d -a -t @3 -e AT_PICK=1 -W /dev/pty0 ") {
+		t.Fatalf("takeover = %q", got)
+	}
+}
+
+// A quick pick leaves the popup open; Escape at the top closes it.
+func TestPopupStaysOpenUntilClosed(t *testing.T) {
+	m := &popupMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}
+	live := &fakeLive{}
+	m.onPick(tui.Pick{Kind: "select", Item: cmdItem("quiet", "exit 0", true)}, live)
+	live.settled(t)
+	if live.closed {
+		t.Fatal("a quick pick closed the popup")
+	}
+	m.onPick(tui.Pick{Kind: "cancel"}, live)
+	if !live.closed {
+		t.Fatal("Escape at the top didn't close the popup")
 	}
 }
 
@@ -176,7 +204,7 @@ func TestTakeoverProgramKeepsAFailureOnScreen(t *testing.T) {
 
 func TestSyncReloadsTheMenuAndItsVersion(t *testing.T) {
 	want := []core.Item{{Fields: []string{"lightsoff"}}}
-	m := &systemMenu{load: func() ([]core.Item, int, error) { return want, 42, nil }}
+	m := &popupMenu{load: func() ([]core.Item, int, error) { return want, 42, nil }}
 	live := &fakeLive{}
 	m.onCommand("synced", live)
 	if len(live.reload) != 1 || live.s.MenuVersion != 42 || live.s.Panel.Lines[0] != "menu synced" {
