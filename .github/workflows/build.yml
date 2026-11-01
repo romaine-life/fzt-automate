@@ -2,9 +2,12 @@ name: Build
 
 # Called by the dep-update template AFTER it cuts a release. Builds the three
 # OS binaries and uploads them to the already-existing release. The tag is
-# passed as an input — no race, no duplicated tag logic.
+# passed as an input — no race, no duplicated tag logic. Every pull request
+# runs the same builds, signing included, without the upload, so a release is
+# never their first run.
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       tag:
@@ -17,19 +20,26 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         include:
+          # on Windows for signtool
           - goos: windows
             goarch: amd64
             output: fzt-automate-windows-amd64.exe
+            runner: windows-latest
           - goos: linux
             goarch: amd64
             output: fzt-automate-linux-amd64
+            runner: ubuntu-latest
           - goos: darwin
             goarch: arm64
             output: fzt-automate-darwin-arm64
+            runner: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +63,26 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
 
+      # Defender quarantined an unsigned tmux build as Program:Win32/Contebrew.A!ml
+      # and passed the same build signed (TMUX-30). The certificate is at
+      # Terminal's, which every home PC trusts.
+      - name: Sign
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.AT_TERMINAL_PFX }}
+          PFX_PASSWORD: ${{ secrets.AT_TERMINAL_PFX_PASSWORD }}
+        run: |
+          if (-not $env:PFX) { throw 'AT_TERMINAL_PFX is not set' }
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          [IO.File]::WriteAllBytes("$PWD\cert.pfx", [Convert]::FromBase64String($env:PFX))
+          try {
+            & $signtool.FullName sign /fd SHA256 /f cert.pfx /p $env:PFX_PASSWORD ${{ matrix.output }}
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } finally { Remove-Item cert.pfx }
+
       - name: Upload to release
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
