@@ -14,7 +14,7 @@
 //
 //	fzt-automate
 //	fzt-automate --title "What would you like to do?"
-//	fzt-automate --sync    # pull the menu into the cache, without the picker
+//	fzt-automate --sync    # pull the menu into the cache, without the picker (renews the token from the TPM key if needed)
 //	fzt-automate --popup --window @3 --client /dev/pty0 [--open tmux] < rows
 //	                       # the popup at over a tab, run by tmux's display-palette
 //	                       # with its rows on stdin: runs picks itself (popup.go)
@@ -141,13 +141,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Identity for whoami display comes from the auth.romaine.life token's
-	// email claim. There is no local .identity file anymore — the loaded
-	// token (written by `authromaine`) is the single source of identity.
-	identity := ""
-	if token, err := frontend.ReadAuthToken(cfgDir); err == nil {
-		identity = frontend.EmailFromToken(token)
-	}
+	// Identity for whoami display is the cached auth.romaine.life token's email
+	// claim, read without renewing: opening the menu never waits on the network.
+	identity := frontend.SignedInEmail(cfgDir)
 
 	menuVersion := readMenuVersion(cfgDir)
 
