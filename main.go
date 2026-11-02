@@ -18,6 +18,9 @@
 //	fzt-automate --popup --window @3 --client /dev/pty0 [--open tmux] < rows
 //	                       # the popup at over a tab, run by tmux's display-palette
 //	                       # with its rows on stdin: runs picks itself (popup.go)
+//	fzt-automate <built-in> [arguments]
+//	                       # one of the at commands it runs itself (builtins.go),
+//	                       # as a pick would: `fzt-automate lights off 30`
 package main
 
 import (
@@ -28,10 +31,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/romaine-life/fzt/core"
-	"github.com/romaine-life/fzt/render"
 	frontend "github.com/romaine-life/fzt-frontend"
 	"github.com/romaine-life/fzt-terminal/tui"
+	"github.com/romaine-life/fzt/core"
+	"github.com/romaine-life/fzt/render"
 )
 
 // configDir returns the directory holding fzt-automate's menu cache and state.
@@ -58,6 +61,16 @@ func main() {
 	if render.Version == "UNSET" {
 		fmt.Fprintln(os.Stderr, "fzt-automate: version not set — build with 'go run ./build' (not 'go build .')")
 		os.Exit(1)
+	}
+
+	if len(os.Args) > 1 {
+		if b, ok := builtins[os.Args[1]]; ok {
+			os.Exit(runSubcommand(b, os.Args[2:]))
+		}
+		if os.Args[1] == "--help" || os.Args[1] == "-h" {
+			fmt.Print("fzt-automate: the at menu. Its built-in commands:\n\n" + builtinList())
+			os.Exit(0)
+		}
 	}
 
 	title := "What would you like to do?"
@@ -127,7 +140,8 @@ func main() {
 		}
 		tmuxRows = rows
 		// The popup runs in tmux's environment, not a shell's: the at commands
-		// reach PATH through AT_SCRIPTS, which tmux holds (set-fzt.ps1).
+		// not yet moved off PowerShell reach PATH through AT_SCRIPTS, which tmux
+		// holds (set-fzt.ps1).
 		if dir := os.Getenv("AT_SCRIPTS"); dir != "" {
 			os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 		}
@@ -148,20 +162,20 @@ func main() {
 	menuVersion := readMenuVersion(cfgDir)
 
 	cfg := tui.Config{
-		Layout:          "reverse",
-		Border:          true,
-		Tiered:          true,
-		DepthPenalty:    5,
-		HeaderLines:     1,
-		Nth:             []int{1},
-		AcceptNth:       []int{1},
-		Title:           title,
-		TreeMode:        true,
-		EnvTags:         []string{"terminal"},
-		FrontendName:    "automate",
-		FrontendVersion: render.Version,
-		InitialDisplay:  identity,
-		Provider:        folders,
+		Layout:             "reverse",
+		Border:             true,
+		Tiered:             true,
+		DepthPenalty:       5,
+		HeaderLines:        1,
+		Nth:                []int{1},
+		AcceptNth:          []int{1},
+		Title:              title,
+		TreeMode:           true,
+		EnvTags:            []string{"terminal"},
+		FrontendName:       "automate",
+		FrontendVersion:    render.Version,
+		InitialDisplay:     identity,
+		Provider:           folders,
 		ConfigDir:          cfgDir,
 		InitialMenuVersion: menuVersion,
 		UpdateRepo:         "romaine-life/fzt-automate",

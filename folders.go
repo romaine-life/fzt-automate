@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/romaine-life/fzt/core"
@@ -66,51 +68,64 @@ func (p *commandFolders) LoadChildren(parentPath string) []core.Item {
 	if !ok {
 		return nil
 	}
-	var stderr bytes.Buffer
-	cmd := shellCommand(command)
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	rows, err := folderRows(command)
 	if err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return []core.Item{{Fields: []string{command + " failed", msg}, PropertyOf: -1}}
+		return []core.Item{{Fields: []string{command + " failed", err.Error()}, PropertyOf: -1}}
 	}
-
 	var children []core.Item
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line == "" {
-			continue
-		}
-		f := strings.Split(line, "\t")
+	for _, r := range rows {
 		// A folder's rows pick something (a window, a program): quick, never a takeover.
-		item := core.Item{Fields: f[:1], PropertyOf: -1, Quick: true}
-		if len(f) > 1 && f[1] != "" {
-			item.Fields = append(item.Fields, f[1])
+		item := core.Item{Fields: []string{r.name}, PropertyOf: -1, Quick: true}
+		if r.description != "" {
+			item.Fields = append(item.Fields, r.description)
 		}
-		if len(f) > 2 && f[2] != "" {
-			item.Action = &core.ItemAction{Type: "command", Target: f[2]}
+		if r.action != "" {
+			item.Action = &core.ItemAction{Type: "command", Target: r.action}
 		}
 		children = append(children, item)
 	}
 	return children
 }
 
-// shellCommand runs a command line the way the at wrapper would: PowerShell
-// on Windows (pwsh, else Windows PowerShell), sh elsewhere.
-func shellCommand(command string) *exec.Cmd {
-	if runtime.GOOS != "windows" {
-		return exec.Command("sh", "-c", command)
+// folderRows lists a command folder's children: a built-in's rows, or the lines
+// a program or not-yet-moved at command prints, each "name", then optionally a
+// tab and a description, then a tab and the action run when it is picked.
+func folderRows(command string) ([]folderRow, error) {
+	s, err := resolve(command)
+	if err != nil {
+		return nil, err
 	}
-	return exec.Command(powershell(), "-NoProfile", "-NonInteractive", "-Command", command)
-}
-
-// powershell is pwsh where installed, else Windows PowerShell.
-func powershell() string {
-	if _, err := exec.LookPath("pwsh"); err == nil {
-		return "pwsh"
+	var cmd *exec.Cmd
+	switch s.kind {
+	case stepBuiltin:
+		if s.b.rows == nil {
+			return nil, fmt.Errorf("%s doesn't list anything, so it can't fill a folder", s.b.name)
+		}
+		return s.b.rows(context.Background(), s.args)
+	case stepScript:
+		cmd = scriptCommand(s.line)
+	default:
+		if cmd, err = programCommand(s.args); err != nil {
+			return nil, err
+		}
 	}
-	return "powershell"
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return nil, errors.New(msg)
+		}
+		return nil, err
+	}
+	var rows []folderRow
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		f := append(strings.Split(line, "\t"), "", "")
+		rows = append(rows, folderRow{name: f[0], description: f[1], action: f[2]})
+	}
+	return rows, nil
 }

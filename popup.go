@@ -10,6 +10,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,20 +25,17 @@ import (
 	"github.com/romaine-life/fzt/core"
 )
 
-// pickKind is how the popup runs a pick.
+// pickKind is what a pick is before its action is resolved.
 type pickKind int
 
 const (
-	pickNone     pickKind = iota // nothing to run (a folder, an informational row)
-	pickURL                      // opened by the desktop, from here
-	pickQuick                    // run here, result in the panel
-	pickTakeover                 // a new tmux window that owns its program
+	pickNone    pickKind = iota // nothing to run (a folder, an informational row)
+	pickURL                     // opened by the desktop, from here
+	pickCommand                 // an action line: a built-in, a program, or an at command not yet moved
 )
 
-// classify decides how a pick runs and the command line it runs. URLs and
-// `launch` actions are quick by their kind; any other command is a takeover
-// unless its entry is marked quick, so nothing lands in the three-line panel
-// by accident. text is what was typed for an entry that declares an input.
+// classify gives the URL or the action line a pick runs. text is what was
+// typed for an entry that declares an input; it is added as one argument.
 func classify(item core.Item, text string, hasInput bool) (pickKind, string) {
 	if item.Action != nil && item.Action.Type == "url" {
 		return pickURL, item.Action.Target
@@ -54,24 +52,21 @@ func classify(item core.Item, text string, hasInput bool) (pickKind, string) {
 		return pickNone, ""
 	}
 	if hasInput {
-		line += " " + psQuote(text)
+		// Quoted the same way for an action line and for PowerShell.
+		line += " " + "'" + strings.ReplaceAll(text, "'", "''") + "'"
 	}
-	if item.Quick || firstWord(line) == "launch" {
-		return pickQuick, line
-	}
-	return pickTakeover, line
+	return pickCommand, line
 }
 
-func firstWord(line string) string {
-	if f := strings.Fields(line); len(f) > 0 {
-		return f[0]
+// isTakeover says whether a resolved pick opens as its own tab. A built-in
+// knows whether it talks to the person; a program or an at command not yet
+// moved is a takeover unless its entry is marked quick, so nothing lands in
+// the three-line panel by accident.
+func isTakeover(s step, item core.Item) bool {
+	if s.kind == stepBuiltin {
+		return s.b.terminal
 	}
-	return ""
-}
-
-// psQuote makes text one PowerShell argument.
-func psQuote(text string) string {
-	return "'" + strings.ReplaceAll(text, "'", "''") + "'"
+	return !item.Quick
 }
 
 func itemName(item core.Item) string {
@@ -111,12 +106,7 @@ func runPopup(m *popupMenu, items []core.Item, cfg tui.Config) error {
 	}
 	cfg.ShowPanel = true
 	return tui.RunLoop(items, cfg, func(live *tui.Live) {
-		live.Update(func(s *core.State) {
-			s.Overruns = m.overruns
-			if os.Getenv("AT_SCRIPTS") == "" {
-				s.SetPanel("at commands can't run here: tmux has no AT_SCRIPTS (set-fzt.ps1 sets it)", core.PanelFailed)
-			}
-		})
+		live.Update(func(s *core.State) { s.Overruns = m.overruns })
 	}, func(p tui.Pick, live *tui.Live) { m.onPick(p, live) })
 }
 
@@ -146,10 +136,18 @@ func (m *popupMenu) onPick(p tui.Pick, live liveMenu) {
 			return
 		}
 		live.Update(func(s *core.State) { s.SetPanel("opened "+name, core.PanelOK) })
-	case pickQuick:
-		m.runQuick(p.Item, name, line, live)
-	case pickTakeover:
-		m.runTakeover(name, line, live)
+	case pickCommand:
+		s, err := resolve(line)
+		if err != nil {
+			live.Update(func(st *core.State) { st.SetPanel(fmt.Sprintf("%s can't run: %v", name, err), core.PanelFailed) })
+			return
+		}
+		s.dir = tabFolder(m.window)
+		if isTakeover(s, p.Item) {
+			m.runTakeover(name, s, live)
+		} else {
+			m.runQuick(p.Item, name, line, s, live)
+		}
 	}
 }
 
@@ -172,52 +170,98 @@ func (m *popupMenu) onCommand(action string, live liveMenu) {
 	}
 }
 
-// runQuick runs a quick command in the background, the menu frozen until it ends. Escape
-// stops it. The exit code is the verdict; the panel shows three lines, and the
-// full output goes to the last-output file.
-func (m *popupMenu) runQuick(item core.Item, name, line string, live liveMenu) {
-	cmd := shellCommand(line)
-	cmd.Env = append(os.Environ(), "AT_PICK=1")
+// job is a quick pick or a takeover's tmux call while it runs: wait ends with
+// its verdict, stop ends it early.
+type job struct {
+	wait func() error
+	stop func()
+}
+
+func startCmd(cmd *exec.Cmd) (job, error) {
+	if err := cmd.Start(); err != nil {
+		return job{}, err
+	}
+	return job{wait: cmd.Wait, stop: func() { _ = cmd.Process.Kill() }}, nil
+}
+
+// runQuick runs a quick pick in the background, the menu frozen until it
+// ends. Escape stops it. A built-in runs here and returns its sentence; a
+// program's exit code is the verdict and its output the panel's text. The
+// panel shows three lines, and the full output goes to the last-output file.
+func (m *popupMenu) runQuick(item core.Item, name, line string, s step, live liveMenu) {
 	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	m.runFrozen(cmd, "running "+name+"…", name, live, func(err error, stopped bool) (string, int) {
-		m.saveLastOutput(line, out.String())
-		text := strings.TrimSpace(out.String())
+	var resultText string
+	var start func() (job, error)
+	switch s.kind {
+	case stepBuiltin:
+		start = func() (job, error) {
+			ctx, cancel := context.WithCancel(withDir(context.Background(), s.dir))
+			done := make(chan error, 1)
+			go func() {
+				text, err := s.b.run(ctx, &out, s.args)
+				resultText = text
+				done <- err
+			}()
+			return job{wait: func() error { defer cancel(); return <-done }, stop: cancel}, nil
+		}
+	default:
+		start = func() (job, error) {
+			var cmd *exec.Cmd
+			if s.kind == stepScript {
+				cmd = scriptCommand(s.line)
+				cmd.Env = append(os.Environ(), "AT_PICK=1")
+			} else {
+				var err error
+				if cmd, err = programCommand(s.args); err != nil {
+					return job{}, err
+				}
+			}
+			cmd.Dir = s.dir
+			cmd.Stdout = &out
+			cmd.Stderr = &out
+			return startCmd(cmd)
+		}
+	}
+	m.runFrozen(start, "running "+name+"…", name, live, func(err error, stopped bool) (string, int) {
+		full := strings.TrimSpace(strings.TrimSpace(out.String()) + "\n" + resultText)
+		m.saveLastOutput(line, full)
 		var exit *exec.ExitError
 		switch {
 		case stopped:
 			return "stopped " + name, core.PanelFailed
 		case errors.As(err, &exit):
-			if text == "" {
-				text = fmt.Sprintf("%s failed (exit %d)", name, exit.ExitCode())
+			if full == "" {
+				full = fmt.Sprintf("%s failed (exit %d)", name, exit.ExitCode())
 			}
-			return text, core.PanelFailed
+			return full, core.PanelFailed
 		case err != nil:
+			if s.kind == stepBuiltin {
+				return strings.TrimSpace(out.String() + "\n" + err.Error()), core.PanelFailed
+			}
 			return fmt.Sprintf("%s failed: %v", name, err), core.PanelFailed
-		case text == "":
+		case full == "":
 			return name + " done", core.PanelOK
 		}
-		return text, core.PanelOK
+		return full, core.PanelOK
 	}, item.Path, nil)
 }
 
-// runTakeover opens the command as a new tab right after the one the popup is
+// runTakeover opens the pick as a new tab right after the one the popup is
 // over. tmux creates it in the background and switches to it once its program
 // has drawn (at-tmux `new-window -W`, FZT-64), so the screen never
 // shows a blank pane; until then the menu is frozen with the panel saying so,
 // and Escape stops waiting, leaving the tab where it is. Once tmux has
 // switched, the popup closes.
-func (m *popupMenu) runTakeover(name, line string, live liveMenu) {
-	args, err := takeoverArgs(m.window, m.client, line)
+func (m *popupMenu) runTakeover(name string, s step, live liveMenu) {
+	args, err := takeoverArgs(m.window, m.client, s)
 	if err != nil {
-		live.Update(func(s *core.State) { s.SetPanel(fmt.Sprintf("%s can't open: %v", name, err), core.PanelFailed) })
+		live.Update(func(st *core.State) { st.SetPanel(fmt.Sprintf("%s can't open: %v", name, err), core.PanelFailed) })
 		return
 	}
 	cmd := exec.Command("tmux", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	m.runFrozen(cmd, "starting "+name+"…", name, live, func(err error, stopped bool) (string, int) {
+	m.runFrozen(func() (job, error) { return startCmd(cmd) }, "starting "+name+"…", name, live, func(err error, stopped bool) (string, int) {
 		switch {
 		case stopped:
 			return "stopped waiting for " + name + "; its tab is after yours", core.PanelFailed
@@ -235,16 +279,17 @@ func (m *popupMenu) runTakeover(name, line string, live liveMenu) {
 	})
 }
 
-// runFrozen runs cmd with the menu frozen and the panel showing running.
-// Escape kills cmd. When it ends, result gives the panel's text and style;
+// runFrozen runs a job with the menu frozen and the panel showing running.
+// Escape stops it. When it ends, result gives the panel's text and style;
 // path, when set, is the entry whose overrun mark the result updates.
 // done, when set, runs once the panel shows the result.
-func (m *popupMenu) runFrozen(cmd *exec.Cmd, running, name string, live liveMenu, result func(err error, stopped bool) (string, int), path string, done func(err error, stopped bool)) {
+func (m *popupMenu) runFrozen(start func() (job, error), running, name string, live liveMenu, result func(err error, stopped bool) (string, int), path string, done func(err error, stopped bool)) {
 	live.Update(func(s *core.State) {
 		s.Freeze()
 		s.SetPanel(running, core.PanelRunning)
 	})
-	if err := cmd.Start(); err != nil {
+	j, err := start()
+	if err != nil {
 		live.Update(func(s *core.State) {
 			s.SetPanel(fmt.Sprintf("%s didn't start: %v", name, err), core.PanelFailed)
 			s.Unfreeze()
@@ -257,10 +302,10 @@ func (m *popupMenu) runFrozen(cmd *exec.Cmd, running, name string, live liveMenu
 		case stopped <- struct{}{}:
 		default:
 		}
-		_ = cmd.Process.Kill()
+		j.stop()
 	})
 	go func() {
-		err := cmd.Wait()
+		err := j.wait()
 		live.OnAbort(nil)
 		wasStopped := false
 		select {
@@ -304,21 +349,37 @@ func (m *popupMenu) markOverrun(path string, clipped bool) {
 	}
 }
 
-// takeoverProgram is what a takeover window runs: the command in a shell
-// with the profile, closing with it when it succeeds and dropping to a prompt
-// when it fails, so its error stays on screen (as the one-shot at does).
-func takeoverProgram(line string) []string {
-	return []string{powershell(), "-NoLogo", "-NoExit", "-Command",
-		line + "; if ($? -and -not $LASTEXITCODE) { exit }"}
+// takeoverProgram is what a takeover tab runs. A built-in that talks to the
+// person runs as this fzt-automate's subcommand; a program runs as itself. An
+// at command not yet moved runs as before: in a shell with the profile,
+// closing with it when it succeeds and dropping to a prompt when it fails.
+func takeoverProgram(s step) []string {
+	switch s.kind {
+	case stepBuiltin:
+		return append([]string{selfProgram(), s.b.name}, s.args...)
+	case stepScript:
+		return []string{powershell(), "-NoLogo", "-NoExit", "-Command",
+			s.line + "; if ($? -and -not $LASTEXITCODE) { exit }"}
+	}
+	return s.args
 }
 
 // takeoverArgs builds the tmux command that opens a takeover after window,
-// for the client showing it.
-func takeoverArgs(window, client, line string) ([]string, error) {
+// for the client showing it. Given two or more arguments, tmux starts the
+// program itself, with no shell. A tab whose program fails stays open with
+// its output (remain-on-exit failed, set as the window is made, before the
+// program can end).
+func takeoverArgs(window, client string, s step) ([]string, error) {
 	if window == "" || client == "" {
 		return nil, errors.New("tmux didn't say which tab the menu is over (--window, --client)")
 	}
-	args := []string{"new-window", "-d", "-a", "-t", window, "-e", "AT_PICK=1"}
+	args := []string{"new-window", "-d", "-a", "-t", window, "-o", "remain-on-exit=failed"}
+	if s.dir != "" {
+		args = append(args, "-c", s.dir)
+	}
+	if s.kind == stepScript {
+		args = append(args, "-e", "AT_PICK=1")
+	}
 	args = append(args, tmuxSwitchOnDraw(client)...)
-	return append(args, takeoverProgram(line)...), nil
+	return append(args, tmuxProgram(takeoverProgram(s))...), nil
 }
