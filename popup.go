@@ -204,7 +204,7 @@ func (m *popupMenu) runQuick(item core.Item, name, line string, live liveMenu) {
 
 // runTakeover opens the command as a new tab right after the one the popup is
 // over. tmux creates it in the background and switches to it once its program
-// has drawn (tmux-windows-fork `new-window -W`, FZT-64), so the screen never
+// has drawn (at-tmux `new-window -W`, FZT-64), so the screen never
 // shows a blank pane; until then the menu is frozen with the panel saying so,
 // and Escape stops waiting, leaving the tab where it is. Once tmux has
 // switched, the popup closes.
