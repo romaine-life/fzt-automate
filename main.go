@@ -24,8 +24,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -241,7 +243,46 @@ func main() {
 		os.Exit(130)
 	}
 
-	fmt.Println(pickLine(pick))
+	line := pickLine(pick)
+	isURL := pick.Item.Action != nil && pick.Item.Action.Type == "url"
+	if !isURL && line != "" {
+		if code, ran := runHere(line); ran {
+			os.Exit(code)
+		}
+	}
+	fmt.Println(line)
+}
+
+// runHere runs a one-shot pick in this terminal when it is a built-in or a
+// program. An at command not yet moved off PowerShell is printed for the at
+// wrapper instead, as before, and so is a URL.
+func runHere(line string) (int, bool) {
+	s, err := resolve(line)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+		return 1, true
+	}
+	switch s.kind {
+	case stepBuiltin:
+		return runSubcommand(s.b, s.args), true
+	case stepProgram:
+		cmd, err := programCommand(s.args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+			return 1, true
+		}
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			var exit *exec.ExitError
+			if errors.As(err, &exit) {
+				return exit.ExitCode(), true
+			}
+			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+			return 1, true
+		}
+		return 0, true
+	}
+	return 0, false
 }
 
 // pickLine is the line the at wrapper runs for a pick: the picked item's
