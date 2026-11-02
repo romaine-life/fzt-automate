@@ -18,20 +18,25 @@
 //	fzt-automate --popup --window @3 --client /dev/pty0 [--open tmux] < rows
 //	                       # the popup at over a tab, run by tmux's display-palette
 //	                       # with its rows on stdin: runs picks itself (popup.go)
+//	fzt-automate <built-in> [arguments]
+//	                       # one of the at commands it runs itself (builtins.go),
+//	                       # as a pick would: `fzt-automate lights off 30`
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 
-	"github.com/romaine-life/fzt/core"
-	"github.com/romaine-life/fzt/render"
 	frontend "github.com/romaine-life/fzt-frontend"
 	"github.com/romaine-life/fzt-terminal/tui"
+	"github.com/romaine-life/fzt/core"
+	"github.com/romaine-life/fzt/render"
 )
 
 // configDir returns the directory holding fzt-automate's menu cache and state.
@@ -58,6 +63,16 @@ func main() {
 	if render.Version == "UNSET" {
 		fmt.Fprintln(os.Stderr, "fzt-automate: version not set — build with 'go run ./build' (not 'go build .')")
 		os.Exit(1)
+	}
+
+	if len(os.Args) > 1 {
+		if b, ok := builtins[os.Args[1]]; ok {
+			os.Exit(runSubcommand(b, os.Args[2:]))
+		}
+		if os.Args[1] == "--help" || os.Args[1] == "-h" {
+			fmt.Print("fzt-automate: the at menu. Its built-in commands:\n\n" + builtinList())
+			os.Exit(0)
+		}
 	}
 
 	title := "What would you like to do?"
@@ -127,7 +142,8 @@ func main() {
 		}
 		tmuxRows = rows
 		// The popup runs in tmux's environment, not a shell's: the at commands
-		// reach PATH through AT_SCRIPTS, which tmux holds (set-fzt.ps1).
+		// not yet moved off PowerShell reach PATH through AT_SCRIPTS, which tmux
+		// holds (set-fzt.ps1).
 		if dir := os.Getenv("AT_SCRIPTS"); dir != "" {
 			os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 		}
@@ -148,20 +164,20 @@ func main() {
 	menuVersion := readMenuVersion(cfgDir)
 
 	cfg := tui.Config{
-		Layout:          "reverse",
-		Border:          true,
-		Tiered:          true,
-		DepthPenalty:    5,
-		HeaderLines:     1,
-		Nth:             []int{1},
-		AcceptNth:       []int{1},
-		Title:           title,
-		TreeMode:        true,
-		EnvTags:         []string{"terminal"},
-		FrontendName:    "automate",
-		FrontendVersion: render.Version,
-		InitialDisplay:  identity,
-		Provider:        folders,
+		Layout:             "reverse",
+		Border:             true,
+		Tiered:             true,
+		DepthPenalty:       5,
+		HeaderLines:        1,
+		Nth:                []int{1},
+		AcceptNth:          []int{1},
+		Title:              title,
+		TreeMode:           true,
+		EnvTags:            []string{"terminal"},
+		FrontendName:       "automate",
+		FrontendVersion:    render.Version,
+		InitialDisplay:     identity,
+		Provider:           folders,
 		ConfigDir:          cfgDir,
 		InitialMenuVersion: menuVersion,
 		UpdateRepo:         "romaine-life/fzt-automate",
@@ -227,7 +243,46 @@ func main() {
 		os.Exit(130)
 	}
 
-	fmt.Println(pickLine(pick))
+	line := pickLine(pick)
+	isURL := pick.Item.Action != nil && pick.Item.Action.Type == "url"
+	if !isURL && line != "" {
+		if code, ran := runHere(line); ran {
+			os.Exit(code)
+		}
+	}
+	fmt.Println(line)
+}
+
+// runHere runs a one-shot pick in this terminal when it is a built-in or a
+// program. An at command not yet moved off PowerShell is printed for the at
+// wrapper instead, as before, and so is a URL.
+func runHere(line string) (int, bool) {
+	s, err := resolve(line)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+		return 1, true
+	}
+	switch s.kind {
+	case stepBuiltin:
+		return runSubcommand(s.b, s.args), true
+	case stepProgram:
+		cmd, err := programCommand(s.args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+			return 1, true
+		}
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			var exit *exec.ExitError
+			if errors.As(err, &exit) {
+				return exit.ExitCode(), true
+			}
+			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+			return 1, true
+		}
+		return 0, true
+	}
+	return 0, false
 }
 
 // pickLine is the line the at wrapper runs for a pick: the picked item's

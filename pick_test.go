@@ -1,7 +1,6 @@
 package main
 
 import (
-	"runtime"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -12,10 +11,7 @@ import (
 // A menu entry and a window share a name: picking the window runs the
 // window's action, not the menu entry's.
 func TestPickRunsThePickedItemWhenNamesCollide(t *testing.T) {
-	command := `printf 'Steam\t\tfocus steam\n'`
-	if runtime.GOOS == "windows" {
-		command = `"Steam` + "`t`t" + `focus steam"`
-	}
+	command := helperLine(t, "print", "Steam\t\tfocus steam")
 	items := []core.Item{
 		{Fields: []string{"Steam"}, ParentIdx: -1, PropertyOf: -1, Action: &core.ItemAction{Type: "url", Target: "https://store.steampowered.com"}},
 		{Fields: []string{"windows"}, ParentIdx: -1, PropertyOf: -1, Action: &core.ItemAction{Type: "command", Target: "folder:" + command}},
