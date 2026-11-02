@@ -15,6 +15,8 @@
 //	fzt-automate
 //	fzt-automate --title "What would you like to do?"
 //	fzt-automate --sync    # pull the menu into the cache, without the picker (renews the token from the TPM key if needed)
+//	fzt-automate --run     # the menu as a tab's program (Ctrl+T Ctrl+A): runs
+//	                       # its pick itself, the not-yet-moved scripts too
 //	fzt-automate --popup --window @3 --client /dev/pty0 [--open tmux] < rows
 //	                       # the popup at over a tab, run by tmux's display-palette
 //	                       # with its rows on stdin: runs picks itself (popup.go)
@@ -79,6 +81,7 @@ func main() {
 	header := "Name\tDescription"
 	syncOnly := false
 	popup := false
+	runAll := false // --run: the one-shot menu runs every pick itself, scripts and URLs too
 	var window, client, open string
 
 	args := os.Args[1:]
@@ -98,6 +101,8 @@ func main() {
 			syncOnly = true
 		case "--popup":
 			popup = true
+		case "--run":
+			runAll = true
 		case "--window", "--client", "--open":
 			if i+1 < len(args) {
 				switch args[i] {
@@ -141,9 +146,10 @@ func main() {
 			os.Exit(1)
 		}
 		tmuxRows = rows
-		// The popup runs in tmux's environment, not a shell's: the at commands
-		// not yet moved off PowerShell reach PATH through AT_SCRIPTS, which tmux
-		// holds (set-fzt.ps1).
+	}
+	if popup || runAll {
+		// Started by tmux, not a shell: the at commands not yet moved off
+		// PowerShell reach PATH through AT_SCRIPTS, which tmux holds (set-fzt.ps1).
 		if dir := os.Getenv("AT_SCRIPTS"); dir != "" {
 			os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 		}
@@ -245,8 +251,15 @@ func main() {
 
 	line := pickLine(pick)
 	isURL := pick.Item.Action != nil && pick.Item.Action.Type == "url"
-	if !isURL && line != "" {
-		if code, ran := runHere(line); ran {
+	switch {
+	case runAll && isURL:
+		if err := openURL(line); err != nil {
+			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	case !isURL && line != "":
+		if code, ran := runHere(line, runAll); ran {
 			os.Exit(code)
 		}
 	}
@@ -254,35 +267,40 @@ func main() {
 }
 
 // runHere runs a one-shot pick in this terminal when it is a built-in or a
-// program. An at command not yet moved off PowerShell is printed for the at
-// wrapper instead, as before, and so is a URL.
-func runHere(line string) (int, bool) {
+// program, and an at command not yet moved off PowerShell too when scripts is
+// set (--run); otherwise that is printed for the at wrapper, as before.
+func runHere(line string, scripts bool) (int, bool) {
 	s, err := resolve(line)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
 		return 1, true
 	}
+	var cmd *exec.Cmd
 	switch s.kind {
 	case stepBuiltin:
 		return runSubcommand(s.b, s.args), true
+	case stepScript:
+		if !scripts {
+			return 0, false
+		}
+		cmd = scriptCommand(s.line)
+		cmd.Env = append(os.Environ(), "AT_PICK=1")
 	case stepProgram:
-		cmd, err := programCommand(s.args)
-		if err != nil {
+		if cmd, err = programCommand(s.args); err != nil {
 			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
 			return 1, true
 		}
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			var exit *exec.ExitError
-			if errors.As(err, &exit) {
-				return exit.ExitCode(), true
-			}
-			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
-			return 1, true
-		}
-		return 0, true
 	}
-	return 0, false
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return exit.ExitCode(), true
+		}
+		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+		return 1, true
+	}
+	return 0, true
 }
 
 // pickLine is the line the at wrapper runs for a pick: the picked item's
