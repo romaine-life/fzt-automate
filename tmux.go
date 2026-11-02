@@ -11,7 +11,7 @@ import (
 	"github.com/romaine-life/fzt/core"
 )
 
-// tmuxSwitchOnDraw is the tmux-windows-fork new-window option that switches
+// tmuxSwitchOnDraw is the at-tmux new-window option that switches
 // client to the new window once its pane has drawn, and waits until then.
 func tmuxSwitchOnDraw(client string) []string {
 	return []string{"-W", client}
