@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/romaine-life/fzt-terminal/tui"
 	"github.com/romaine-life/fzt/core"
 )
@@ -53,6 +54,9 @@ func TestGraftTmuxBuildsTheFolder(t *testing.T) {
 		if !it.Injected {
 			t.Fatalf("%s would be saved to the cloud menu", it.Fields[0])
 		}
+		if it.Palette {
+			t.Fatalf("%s would run as a : palette command, not go back to tmux", it.Fields[0])
+		}
 	}
 }
 
@@ -82,5 +86,31 @@ func TestTmuxPickGoesBackToTmux(t *testing.T) {
 		if out.String() != c.want || !live.closed {
 			t.Fatalf("%s: printed %q closed %v, want %q and closed", c.pick.Item.Fields[0], out.String(), live.closed, c.want)
 		}
+	}
+}
+
+// Enter on a tmux row reaches the popup as a pick (FZT-73): a row that asks
+// for text opens the text box, and one that doesn't is selected. Both were
+// dropped as unknown : palette commands.
+func TestEnterOnATmuxRowPicksIt(t *testing.T) {
+	enter := func(query string) (*core.State, string) {
+		rows, _ := readTmuxRows(strings.NewReader(paletteRows))
+		cfg := core.Config{Layout: "reverse", HidePalette: true, TreeMode: true, Tiered: true, DepthPenalty: 5, AcceptNth: []int{1}}
+		s, searchCols := core.NewState(graftTmux(nil, rows), cfg)
+		ctx := s.TopCtx()
+		ctx.TreeExpanded = make(map[int]bool)
+		ctx.QueryExpanded = make(map[int]bool)
+		ctx.TreeCursor = -1
+		for _, ch := range query {
+			core.HandleUnifiedKeyResult(s, tcell.KeyRune, ch, false, cfg, searchCols)
+		}
+		r := core.HandleUnifiedKeyResult(s, tcell.KeyEnter, 0, false, cfg, searchCols)
+		return s, tui.ProcessAction(s, r.Action)
+	}
+	if s, action := enter("rename-window"); action != "" || s.PromptPlaceholder != "new name" {
+		t.Fatalf("Enter on rename-window: action %q, text box hint %q; want its text box", action, s.PromptPlaceholder)
+	}
+	if _, action := enter("reopen-tab"); !strings.HasPrefix(action, "select:") {
+		t.Fatalf("Enter on reopen-tab: action %q, want it selected", action)
 	}
 }
