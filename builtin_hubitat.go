@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -52,11 +53,16 @@ func runHubitatDevice(ctx context.Context, out io.Writer, args []string) (string
 			payload["autoOffSeconds"] = n
 		}
 	case "update":
-		id, err := strconv.Atoi(args[1])
-		if err != nil || len(args) != 3 {
+		// From the menu, the id and seconds arrive as one typed argument.
+		f := strings.Fields(strings.Join(args[1:], " "))
+		if len(f) != 2 {
 			return "", usageError(b)
 		}
-		n, err := strconv.Atoi(args[2])
+		id, err := strconv.Atoi(f[0])
+		if err != nil {
+			return "", usageError(b)
+		}
+		n, err := strconv.Atoi(f[1])
 		if err != nil || n <= 0 {
 			return "", usageError(b)
 		}

@@ -40,7 +40,11 @@ func resolve(line string) (step, error) {
 		return step{}, errors.New("the action is empty")
 	}
 	if b, ok := builtins[args[0]]; ok {
-		return step{kind: stepBuiltin, b: b, args: args[1:]}, nil
+		rest, err := expandArgs(args[1:])
+		if err != nil {
+			return step{}, err
+		}
+		return step{kind: stepBuiltin, b: b, args: rest}, nil
 	}
 	if isScript(args[0]) {
 		return step{kind: stepScript, line: line}, nil
