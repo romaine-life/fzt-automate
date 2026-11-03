@@ -50,7 +50,8 @@ jobs:
           }
           if ($env:BRANCH -ne $repo.default_branch) { throw 'Release only from the default branch' }
           if ($code -eq 404) {
-            $body = @{ tag_name = $tag; target_commitish = $sha; name = $tag; body = "$(git log --oneline -1)" } | ConvertTo-Json
+            Invoke-RestMethod -Method Post "$api/tags" -Headers $h -ContentType 'application/json' -Body (@{ tag_name = $tag; target = $sha } | ConvertTo-Json) | Out-Null
+            $body = @{ tag_name = $tag; target_commitish = $sha; name = $tag; body = "$(git log --oneline -1)"; draft = $true } | ConvertTo-Json
             $rel = Invoke-RestMethod -Method Post "$api/releases" -Headers $h -ContentType 'application/json' -Body $body
           }
           $tagged = (Invoke-RestMethod "$api/tags/$tag" -Headers $h).commit.sha

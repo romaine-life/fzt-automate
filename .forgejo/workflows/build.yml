@@ -14,6 +14,8 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    outputs:
+      release-tag: ${{ steps.upload.outputs.tag || 'validation-only' }}
     timeout-minutes: 20
     defaults:
       run:
@@ -61,6 +63,7 @@ jobs:
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           } finally { Remove-Item -LiteralPath $cert -Force }
       - name: Upload to release
+        id: upload
         if: github.event_name == 'workflow_dispatch'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,6 +77,7 @@ jobs:
             if ($old) { Invoke-RestMethod -Method Delete "$api/releases/$($rel.id)/assets/$($old.id)" -Headers $h }
             Invoke-RestMethod -Method Post "$api/releases/$($rel.id)/assets?name=$output" -Headers $h -Form @{ attachment = Get-Item $output } | Out-Null
           }
+          "tag=$env:TAG" | Add-Content $env:GITHUB_OUTPUT
   built:
     needs: windows
     if: always()
@@ -84,3 +88,10 @@ jobs:
           RESULT: ${{ needs.windows.result }}
         run: |
           if ($env:RESULT -ne 'success') { throw "Build failed: $env:RESULT" }
+
+  home-sync:
+    needs: [windows, built]
+    uses: romaine-life/pipeline-templates/.forgejo/workflows/home-sync.yml@main
+    secrets: inherit
+    with:
+      release-tag: ${{ needs.windows.outputs.release-tag != 'validation-only' && needs.windows.outputs.release-tag || '' }}
