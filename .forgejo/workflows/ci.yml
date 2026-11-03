@@ -40,7 +40,11 @@ jobs:
   test:
     needs: [go-linux, go-windows]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
-      - run: test "${{ needs.go-linux.result }}" = success && test "${{ needs.go-windows.result }}" = success
-
+      - shell: pwsh
+        env:
+          LINUX: ${{ needs.go-linux.result }}
+          WINDOWS: ${{ needs.go-windows.result }}
+        run: |
+          if ($env:LINUX -ne 'success' -or $env:WINDOWS -ne 'success') { throw 'An OS check failed' }
