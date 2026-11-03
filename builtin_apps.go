@@ -18,6 +18,8 @@ func init() {
 		about: "run a program in its own tab and keep its output there until Enter", run: runShow})
 	register(&builtin{name: "explore", terminal: true, about: "pick a folder, then open it in Explorer", run: runExplore})
 	register(&builtin{name: "launch-claude", terminal: true, about: "pick a folder, then start Claude Code there in this tab", run: runLaunchClaude})
+	register(&builtin{name: "launch-opencode", usage: "[start-folder]", terminal: true,
+		about: "pick a folder, then start OpenCode with the Anthropic API key in this tab", run: runLaunchOpenCode})
 	register(&builtin{name: "ollama-running", about: "folder: the ollama models running now; picking one stops it", rows: ollamaRunningRows})
 }
 

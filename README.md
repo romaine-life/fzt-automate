@@ -36,3 +36,11 @@ The output box stays open when a program cannot start. A program that starts in
 a new tmux window and then fails keeps its pane through `remain-on-exit=failed`;
 tmux also records its exit in its own error history. The latest quick pick's
 full output remains in `last-output.txt` beside the menu cache.
+
+`launch-opencode [start-folder]` picks a folder and replaces its tmux pane with
+OpenCode, using the Anthropic API login in `~/.local/share/opencode/auth.json`
+(`XDG_DATA_HOME` overrides the data directory). Home-sync provisions the current
+`@opencode/cli` npm package, login and Claude model. On Windows the built-in starts
+the package's executable directly, bypassing npm's command shim. Missing installs
+or API logins report an error before the picker; a failed launch keeps its tab.
+`launch-claude` and its subscription billing remain the default.
