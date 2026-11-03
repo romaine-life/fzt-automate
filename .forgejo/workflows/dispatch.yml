@@ -1,22 +1,93 @@
 name: Dependency Update
 
-# Run by hand (Claude-driven CI): dispatch dispatch.yml on main. Bumps fzt and
-# fzt-terminal, merges the bump through a PR, then cuts a release and builds it.
+# A Windows worker can wait for PR checks without occupying the NAS worker.
+# PRs exercise dependency resolution without pushing, merging, or releasing.
 
 on:
+  pull_request:
   workflow_dispatch:
 
 concurrency:
-  # Shared with release.yml so tag-cutting is serialized across both paths.
-  group: release-tag
+  group: dependency-update
   cancel-in-progress: false
 
 jobs:
   update:
-    uses: romaine-life/pipeline-templates/.forgejo/workflows/go-dependency-update-template.yml@main
-    secrets: inherit
-    with:
-      modules: github.com/romaine-life/fzt github.com/romaine-life/fzt-terminal
-      # Leaf with binary artifacts: no downstream dispatch; build.yml builds
-      # and uploads the three OS binaries to the new release.
-      artifact-build-workflow: build.yml
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref_name }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Update modules and validate access
+        env:
+          TOKEN: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:TOKEN) { throw 'PIPELINE_DISPATCH_TOKEN is not set' }
+          $api = "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY"
+          $h = @{ Authorization = "token $env:TOKEN" }
+          $repo = Invoke-RestMethod $api -Headers $h
+          if (-not $repo.permissions.push) { throw 'Dependency update token cannot write this repository' }
+          # Keep github.com module paths while reading home modules from Forgejo.
+          $auth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$env:TOKEN"))
+          Write-Output "::add-mask::$auth"
+          $env:GIT_CONFIG_COUNT = '2'
+          $env:GIT_CONFIG_KEY_0 = "url.$env:GITHUB_SERVER_URL/romaine-life/.insteadOf"
+          $env:GIT_CONFIG_VALUE_0 = 'https://github.com/romaine-life/'
+          $env:GIT_CONFIG_KEY_1 = "http.$env:GITHUB_SERVER_URL/.extraheader"
+          $env:GIT_CONFIG_VALUE_1 = "Authorization: $auth"
+          $env:GOPRIVATE = 'github.com/romaine-life/*'
+          go get github.com/romaine-life/fzt@latest github.com/romaine-life/fzt-terminal@latest
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go mod tidy
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git diff --exit-code --quiet -- go.mod go.sum
+          $changed = $LASTEXITCODE
+          if ($changed -notin 0,1) { throw 'Cannot inspect dependency changes' }
+          if ($env:EVENT -ne 'workflow_dispatch') {
+            Write-Host "Dependency update dry run complete (changes: $($changed -eq 1))"
+            exit 0
+          }
+          if ($env:BRANCH -ne $repo.default_branch) { throw 'Update only from the default branch' }
+          if ($changed -eq 1) {
+            $branch = "FORGEJO-3-deps-$env:GITHUB_RUN_ID"
+            git switch -c $branch
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            git config user.name forgejo-actions
+            git config user.email forgejo-actions@noreply.romaine.life
+            git add go.mod go.sum
+            git commit -m 'deps: update fzt and fzt-terminal (FORGEJO-3)'
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $sha = git rev-parse HEAD
+            git push origin "HEAD:refs/heads/$branch"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $body = @{ base = $repo.default_branch; head = $branch; title = 'deps: update fzt and fzt-terminal (FORGEJO-3)'; body = 'Dependency update for https://openproject.romaine.life/wp/FORGEJO-3' } | ConvertTo-Json
+            $pr = Invoke-RestMethod -Method Post "$api/pulls" -Headers $h -ContentType 'application/json' -Body $body
+            Write-Host "Opened $($pr.html_url)"
+            $required = 'CI / test (pull_request)','Build / built (pull_request)','Release / release (pull_request)','Dependency Update / update (pull_request)'
+            $ready = $false
+            for ($i = 0; $i -lt 240; $i++) {
+              $status = Invoke-RestMethod "$api/commits/$sha/status" -Headers $h
+              if ($status.state -in 'failure','error') { throw "Checks failed on $($pr.html_url)" }
+              $passed = @($status.statuses | Where-Object status -eq success | ForEach-Object context)
+              $missing = @($required | Where-Object { $_ -notin $passed })
+              if ($status.state -eq 'success' -and $missing.Count -eq 0) { $ready = $true; break }
+              Start-Sleep -Seconds 20
+            }
+            if (-not $ready) { throw "Timed out waiting for $($pr.html_url)" }
+            $body = @{ Do = 'squash'; head_commit_id = $sha; delete_branch_after_merge = $true } | ConvertTo-Json
+            Invoke-RestMethod -Method Post "$api/pulls/$($pr.number)/merge" -Headers $h -ContentType 'application/json' -Body $body | Out-Null
+          }
+          # Retry publishing even if dependencies were already current.
+          $body = @{ ref = $repo.default_branch } | ConvertTo-Json
+          Invoke-RestMethod -Method Post "$api/actions/workflows/release.yml/dispatches" -Headers $h -ContentType 'application/json' -Body $body | Out-Null
