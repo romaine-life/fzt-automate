@@ -43,3 +43,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: test "${{ needs.go-linux.result }}" = success && test "${{ needs.go-windows.result }}" = success
+
