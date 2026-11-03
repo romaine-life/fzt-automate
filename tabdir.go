@@ -30,7 +30,7 @@ func tabFolder(window string) string {
 	if window == "" {
 		return ""
 	}
-	out, err := exec.Command("tmux", "display", "-p", "-t", window, "#{pane_path}\t#{@claude-cwd}").Output()
+	out, err := exec.Command("tmux", "display", "-p", "-t", window, "#{@codex-cwd}\t#{@claude-cwd}\t#{pane_path}").Output()
 	if err != nil {
 		return ""
 	}

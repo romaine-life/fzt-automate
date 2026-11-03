@@ -44,3 +44,8 @@ OpenCode, using the Anthropic API login in `~/.local/share/opencode/auth.json`
 the package's executable directly, bypassing npm's command shim. Missing installs
 or API logins report an error before the picker; a failed launch keeps its tab.
 `launch-claude` and its subscription billing remain the default.
+
+`launch-codex [start-folder]` picks a folder and starts the native Codex executable
+in the window, using the user's existing Codex login. `resume-codex` opens Codex's
+session picker across all folders. Both retain failed launches for inspection.
+The popup menu uses Codex's reported folder for actions launched over its window.
