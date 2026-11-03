@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-tag
-  cancel-in-progress: false
+  group: release-tag-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   release:

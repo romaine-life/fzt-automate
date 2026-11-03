@@ -8,8 +8,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: dependency-update
-  cancel-in-progress: false
+  # A dispatched updater waits for a new PR's dry run, so they need separate groups.
+  group: dependency-update-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   update:
