@@ -191,7 +191,7 @@ func typedPrompt(raw json.RawMessage) string {
 // folderLabel names a session's folder: its last part, or the repo for one of
 // Claude Code's worktrees (<repo>\.claude\worktrees\<name>).
 func folderLabel(folder string) string {
-	f := filepath.ToSlash(folder)
+	f := strings.ReplaceAll(folder, ``, "/")
 	if repo, _, ok := strings.Cut(f, "/.claude/worktrees/"); ok {
 		return path.Base(repo) + " (worktree)"
 	}
