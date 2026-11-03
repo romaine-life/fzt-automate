@@ -1,0 +1,18 @@
+name: Release
+
+# Cut by hand (Claude-driven CI): dispatch release.yml on main. The template
+# cuts the next v0.1.N, dispatches build.yml with it and syncs the GitHub mirror.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: romaine-life/pipeline-templates/.forgejo/workflows/release-and-dispatch-template.yml@main
+    secrets: inherit
+    with:
+      artifact-build-workflow: build.yml

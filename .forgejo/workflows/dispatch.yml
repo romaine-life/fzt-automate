@@ -1,0 +1,22 @@
+name: Dependency Update
+
+# Run by hand (Claude-driven CI): dispatch dispatch.yml on main. Bumps fzt and
+# fzt-terminal, merges the bump through a PR, then cuts a release and builds it.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  # Shared with release.yml so tag-cutting is serialized across both paths.
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  update:
+    uses: romaine-life/pipeline-templates/.forgejo/workflows/go-dependency-update-template.yml@main
+    secrets: inherit
+    with:
+      modules: github.com/romaine-life/fzt github.com/romaine-life/fzt-terminal
+      # Leaf with binary artifacts: no downstream dispatch; build.yml builds
+      # and uploads the three OS binaries to the new release.
+      artifact-build-workflow: build.yml
