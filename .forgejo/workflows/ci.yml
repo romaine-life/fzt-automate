@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # command folders run through sh on Linux and PowerShell on Windows; the
+  # Windows runner (upstairspc, host mode) has no usable bash, so the two
+  # OSes are separate jobs.
+  go-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  go-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: |
+          go vet ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - run: |
+          go test ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  # The check main's branch protection requires: green only when every OS passed.
+  test:
+    needs: [go-linux, go-windows]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.go-linux.result }}" = success && test "${{ needs.go-windows.result }}" = success

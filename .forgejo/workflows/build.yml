@@ -1,0 +1,128 @@
+name: Build
+
+# Dispatched by the release template after it cuts a release: builds the three
+# OS binaries at the tag and uploads them to that release. Every pull request
+# runs the same builds, signing included, without the upload, so a release is
+# never their first run.
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build artifacts for (and upload to)'
+        required: true
+        type: string
+
+jobs:
+  # On Windows for signtool. upstairspc runs jobs on the host, where bash is
+  # the WSL launcher, so every step is pwsh.
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      OUTPUT: fzt-automate-windows-amd64.exe
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          $engine = go list -m -f '{{.Version}}' github.com/romaine-life/fzt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go build -ldflags="-X github.com/romaine-life/fzt/render.Version=$env:TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine" -o $env:OUTPUT .
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      # Defender quarantined an unsigned tmux build as Program:Win32/Contebrew.A!ml
+      # and passed the same build signed (TMUX-30). The certificate is at
+      # Terminal's, which every home PC trusts.
+      - name: Sign
+        env:
+          PFX: ${{ secrets.AT_TERMINAL_PFX }}
+          PFX_PASSWORD: ${{ secrets.AT_TERMINAL_PFX_PASSWORD }}
+        run: |
+          if (-not $env:PFX) { throw 'AT_TERMINAL_PFX is not set' }
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          [IO.File]::WriteAllBytes("$PWD\cert.pfx", [Convert]::FromBase64String($env:PFX))
+          try {
+            & $signtool.FullName sign /fd SHA256 /f cert.pfx /p $env:PFX_PASSWORD $env:OUTPUT
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } finally { Remove-Item cert.pfx }
+
+      - name: Upload to release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $api = "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY"
+          $h = @{ Authorization = "token $env:TOKEN" }
+          $rel = Invoke-RestMethod "$api/releases/tags/$env:TAG" -Headers $h
+          $old = $rel.assets | Where-Object name -eq $env:OUTPUT
+          if ($old) { Invoke-RestMethod -Method Delete "$api/releases/$($rel.id)/assets/$($old.id)" -Headers $h }
+          Invoke-RestMethod -Method Post "$api/releases/$($rel.id)/assets?name=$env:OUTPUT" -Headers $h -Form @{ attachment = Get-Item $env:OUTPUT } | Out-Null
+
+  unix:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            output: fzt-automate-linux-amd64
+          - goos: darwin
+            goarch: arm64
+            output: fzt-automate-darwin-arm64
+    env:
+      OUTPUT: ${{ matrix.output }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          engine=$(go list -m -f '{{.Version}}' github.com/romaine-life/fzt)
+          go build -ldflags="-X github.com/romaine-life/fzt/render.Version=$TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine" -o "$OUTPUT" .
+
+      - name: Upload to release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+        run: |
+          rel=$(curl -sS --fail-with-body -H "Authorization: token $TOKEN" "$API/releases/tags/$TAG")
+          id=$(jq -r .id <<<"$rel")
+          old=$(jq -r --arg f "$OUTPUT" '.assets[] | select(.name == $f) | .id' <<<"$rel")
+          if [ -n "$old" ]; then
+            curl -sS --fail-with-body -X DELETE -H "Authorization: token $TOKEN" "$API/releases/$id/assets/$old"
+          fi
+          curl -sS --fail-with-body -o /dev/null -X POST -H "Authorization: token $TOKEN" -F "attachment=@$OUTPUT" "$API/releases/$id/assets?name=$OUTPUT"
+
+  # One check for branch protection: green only when every build passed.
+  built:
+    needs: [windows, unix]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.windows.result }}" = success && test "${{ needs.unix.result }}" = success
