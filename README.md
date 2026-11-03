@@ -48,4 +48,8 @@ or API logins report an error before the picker; a failed launch keeps its tab.
 `launch-codex [start-folder]` picks a folder and starts the native Codex executable
 in the window, using the user's existing Codex login. `resume-codex` opens Codex's
 session picker across all folders. Both retain failed launches for inspection.
+Both use `--no-daemon` so Codex's lifecycle hooks inherit the launching tmux
+pane's environment and can register the session and generate its window name.
+Already-running sessions retain their existing runtime; inspect and repair any
+missing pane registration separately when changing the launcher.
 The popup menu uses Codex's reported folder for actions launched over its window.

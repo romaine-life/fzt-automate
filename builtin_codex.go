@@ -100,7 +100,9 @@ func startCodex(ctx context.Context, program, dir string, args ...string) error 
 	if msg, err := exec.CommandContext(launchCtx, "tmux", "set-option", "-p", "-t", pane, "remain-on-exit", "failed").CombinedOutput(); err != nil {
 		return fmt.Errorf("couldn't retain Codex launch failures: %w: %s", err, strings.TrimSpace(string(msg)))
 	}
-	argv := append([]string{"respawn-pane", "-k", "-t", pane, "-c", dir}, tmuxProgram(append([]string{program}, args...))...)
+	// The shared Codex daemon keeps the environment of its first terminal.
+	// Keep this runtime in its pane so lifecycle hooks inherit this TMUX_PANE.
+	argv := append([]string{"respawn-pane", "-k", "-t", pane, "-c", dir}, tmuxProgram(append([]string{program, "--no-daemon"}, args...))...)
 	if msg, err := exec.CommandContext(launchCtx, "tmux", argv...).CombinedOutput(); err != nil {
 		return fmt.Errorf("tmux couldn't start Codex: %w: %s", err, strings.TrimSpace(string(msg)))
 	}
