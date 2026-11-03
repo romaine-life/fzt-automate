@@ -272,7 +272,7 @@ func main() {
 func runHere(line string, scripts bool) (int, bool) {
 	s, err := resolve(line)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+		fmt.Fprintln(os.Stderr, logFailure("", line, "", fmt.Sprintf("fzt-automate: %v", err)))
 		return 1, true
 	}
 	var cmd *exec.Cmd
@@ -287,17 +287,21 @@ func runHere(line string, scripts bool) (int, bool) {
 		cmd.Env = append(os.Environ(), "AT_PICK=1")
 	case stepProgram:
 		if cmd, err = programCommand(s.args); err != nil {
-			fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+			fmt.Fprintln(os.Stderr, logFailure("", line, "", fmt.Sprintf("fzt-automate: %v", err)))
 			return 1, true
 		}
 	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
+		message := logFailure("", line, cmd.Dir, fmt.Sprintf("fzt-automate: %v", err))
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
+			if strings.Contains(message, "\nCouldn't save failure log:") {
+				fmt.Fprintln(os.Stderr, message)
+			}
 			return exit.ExitCode(), true
 		}
-		fmt.Fprintf(os.Stderr, "fzt-automate: %v\n", err)
+		fmt.Fprintln(os.Stderr, message)
 		return 1, true
 	}
 	return 0, true

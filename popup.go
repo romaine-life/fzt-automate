@@ -132,14 +132,16 @@ func (m *popupMenu) onPick(p tui.Pick, live liveMenu) {
 	switch kind {
 	case pickURL:
 		if err := openURL(line); err != nil {
-			live.Update(func(s *core.State) { s.SetPanel(fmt.Sprintf("%s didn't open: %v", name, err), core.PanelFailed) })
+			text := logFailure(m.cfgDir, name, "", fmt.Sprintf("%s didn't open: %v", name, err))
+			live.Update(func(s *core.State) { s.SetPanel(text, core.PanelFailed) })
 			return
 		}
 		live.Update(func(s *core.State) { s.SetPanel("opened "+name, core.PanelOK) })
 	case pickCommand:
 		s, err := resolve(line)
 		if err != nil {
-			live.Update(func(st *core.State) { st.SetPanel(fmt.Sprintf("%s can't run: %v", name, err), core.PanelFailed) })
+			text := logFailure(m.cfgDir, name, "", fmt.Sprintf("%s can't run: %v", name, err))
+			live.Update(func(st *core.State) { st.SetPanel(text, core.PanelFailed) })
 			return
 		}
 		s.dir = tabFolder(m.window)
@@ -243,7 +245,7 @@ func (m *popupMenu) runQuick(item core.Item, name, line string, s step, live liv
 			return name + " done", core.PanelOK
 		}
 		return full, core.PanelOK
-	}, item.Path, nil)
+	}, item.Path, s.dir, nil)
 }
 
 // runTakeover opens the pick as a new tab right after the one the popup is
@@ -255,7 +257,8 @@ func (m *popupMenu) runQuick(item core.Item, name, line string, s step, live liv
 func (m *popupMenu) runTakeover(name string, s step, live liveMenu) {
 	args, err := takeoverArgs(m.window, m.client, s)
 	if err != nil {
-		live.Update(func(st *core.State) { st.SetPanel(fmt.Sprintf("%s can't open: %v", name, err), core.PanelFailed) })
+		text := logFailure(m.cfgDir, name, s.dir, fmt.Sprintf("%s can't open: %v", name, err))
+		live.Update(func(st *core.State) { st.SetPanel(text, core.PanelFailed) })
 		return
 	}
 	cmd := exec.Command("tmux", args...)
@@ -272,7 +275,7 @@ func (m *popupMenu) runTakeover(name string, s step, live liveMenu) {
 			return fmt.Sprintf("%s didn't open: %v", name, err), core.PanelFailed
 		}
 		return "opened " + name, core.PanelOK
-	}, "", func(err error, stopped bool) {
+	}, "", s.dir, func(err error, stopped bool) {
 		if err == nil && !stopped {
 			live.Close()
 		}
@@ -283,15 +286,16 @@ func (m *popupMenu) runTakeover(name string, s step, live liveMenu) {
 // Escape stops it. When it ends, result gives the panel's text and style;
 // path, when set, is the entry whose overrun mark the result updates.
 // done, when set, runs once the panel shows the result.
-func (m *popupMenu) runFrozen(start func() (job, error), running, name string, live liveMenu, result func(err error, stopped bool) (string, int), path string, done func(err error, stopped bool)) {
+func (m *popupMenu) runFrozen(start func() (job, error), running, name string, live liveMenu, result func(err error, stopped bool) (string, int), path, dir string, done func(err error, stopped bool)) {
 	live.Update(func(s *core.State) {
 		s.Freeze()
 		s.SetPanel(running, core.PanelRunning)
 	})
 	j, err := start()
 	if err != nil {
+		text := logFailure(m.cfgDir, name, dir, fmt.Sprintf("%s didn't start: %v", name, err))
 		live.Update(func(s *core.State) {
-			s.SetPanel(fmt.Sprintf("%s didn't start: %v", name, err), core.PanelFailed)
+			s.SetPanel(text, core.PanelFailed)
 			s.Unfreeze()
 		})
 		return
@@ -314,6 +318,9 @@ func (m *popupMenu) runFrozen(start func() (job, error), running, name string, l
 		default:
 		}
 		text, style := result(err, wasStopped)
+		if err != nil && !wasStopped {
+			text = logFailure(m.cfgDir, name, dir, text)
+		}
 		live.Update(func(s *core.State) {
 			s.SetPanel(text, style)
 			if path != "" {

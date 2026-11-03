@@ -26,6 +26,9 @@ func helper(args []string) int {
 		return 2
 	}
 	switch args[0] {
+	case "failure-log":
+		fmt.Println(logFailure("", "test program", "test folder", args[1]))
+		return 0
 	case "print":
 		for _, l := range args[1:] {
 			fmt.Println(l)

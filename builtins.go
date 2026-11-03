@@ -55,7 +55,7 @@ func runSubcommand(b *builtin, args []string) int {
 	if b.rows != nil {
 		rows, err := b.rows(ctx, args)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", b.name, err)
+			fmt.Fprintln(os.Stderr, logFailure("", b.name, dir, fmt.Sprintf("%s: %v", b.name, err)))
 			return 1
 		}
 		for _, r := range rows {
@@ -65,7 +65,7 @@ func runSubcommand(b *builtin, args []string) int {
 	}
 	result, err := b.run(ctx, os.Stdout, args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", b.name, err)
+		fmt.Fprintln(os.Stderr, logFailure("", b.name, dir, fmt.Sprintf("%s: %v", b.name, err)))
 		return 1
 	}
 	if result != "" {
