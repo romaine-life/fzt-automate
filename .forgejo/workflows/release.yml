@@ -4,6 +4,7 @@ name: Release
 # cuts the next v0.1.N, dispatches build.yml with it and syncs the GitHub mirror.
 
 on:
+  pull_request:
   workflow_dispatch:
 
 concurrency:
@@ -12,7 +13,35 @@ concurrency:
 
 jobs:
   release:
-    uses: romaine-life/pipeline-templates/.forgejo/workflows/release-and-dispatch-template.yml@main
-    secrets: inherit
-    with:
-      artifact-build-workflow: build.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit the shared release workflow
+        env:
+          T: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
+          API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          SHARED_API: ${{ github.server_url }}/api/v1/repos/romaine-life/pipeline-templates
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref_name }}
+          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          repository_url=$(curl -sS --fail-with-body -H "Authorization: token $T" "$API" | jq -er .html_url)
+          RUN_URL="$repository_url/actions/runs/$RUN_NUMBER"
+          status() {
+            body=$(jq -n --arg state "$1" --arg url "$RUN_URL" \
+              '{state: $state, context: "Release validation", description: "Authenticated release workflow validation", target_url: $url}')
+            curl --max-time 60 -sS --fail-with-body -X POST -H "Authorization: token $T" \
+              -H 'Content-Type: application/json' -d "$body" "$API/statuses/$SHA"
+          }
+          if [ -n "$SHA" ]; then status pending; fi
+          body=$(jq -n --arg repo "$REPOSITORY" --arg ref "$REF" --arg dry "$DRY_RUN" --arg sha "$SHA" \
+            '{ref: "main", inputs: {"target-repository": $repo, "target-ref": $ref, "dry-run": $dry, "status-sha": $sha, "artifact-build-workflow": "build.yml"}}')
+          if ! curl --max-time 60 -sS --fail-with-body -X POST -H "Authorization: token $T" \
+            -H 'Content-Type: application/json' -d "$body" \
+            "$SHARED_API/actions/workflows/release-and-dispatch-template.yml/dispatches"; then
+            if [ -n "$SHA" ]; then status failure; fi
+            exit 1
+          fi
+          echo "Submitted release workflow for $REPOSITORY ($REF), dry-run=$DRY_RUN"
