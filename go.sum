@@ -24,6 +24,8 @@ github.com/romaine-life/fzt v0.2.95 h1:X9oDu5HxIUsPOuRqHT0Rxu0uQLyrMRdA/YHigIo72
 github.com/romaine-life/fzt v0.2.95/go.mod h1:+/4sSnR4iFd8ADQWCwJublmXt9lPzlvweFJJKEbTxLw=
 github.com/romaine-life/fzt-frontend v0.1.42 h1:76Nnu2GnJDUSOFXXRO0Wo/6/i4x1+St8FyoZ7RYQOaw=
 github.com/romaine-life/fzt-frontend v0.1.42/go.mod h1:qzYK4oYem6VZPeSp/wRaE4YNuxSUDZy7cIENuTOkGGA=
+github.com/romaine-life/fzt-frontend v0.1.45 h1:AFbKI8XiGLYBV1LI9VYiEMtnX1cqxfhBXu6RDMuwaks=
+github.com/romaine-life/fzt-frontend v0.1.45/go.mod h1:qzYK4oYem6VZPeSp/wRaE4YNuxSUDZy7cIENuTOkGGA=
 github.com/romaine-life/fzt-terminal v0.1.127 h1:x9gh3LQXyZXtphs+c95ilnzz08YKYR9gpEbotoSlNYw=
 github.com/romaine-life/fzt-terminal v0.1.127/go.mod h1:LlRi0eqyHpxIWgrmdpG7mwHIBBUDxHRIB/1AXLu+qYg=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
