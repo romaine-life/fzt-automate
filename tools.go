@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
-// Published tools (shell-config-profile-home claude/topics/home-tools.md):
-// \\NelsonNAS\tools\<tool>\<version>\ holds one release each, and
-// <tool>\current.json names the live one. Synology Drive keeps a copy of the
-// share at ~\tools on each PC.
+// Legacy publications and shared settings remain on the NAS. On Windows,
+// home-sync owns executable releases under Program Files instead.
 var (
 	toolsNas   = `\\NelsonNAS\tools`
 	toolsLocal = filepath.Join(os.Getenv("USERPROFILE"), "tools")
@@ -35,6 +34,23 @@ func readToolCurrent(root, name string) (toolCurrent, bool) {
 // read, since Drive can fall behind); the file comes from the Drive copy when
 // it holds that release, else from the NAS.
 func toolPath(name, file string) (string, error) {
+	if runtime.GOOS == "windows" {
+		entries := map[string]string{
+			"at-home-tools": "home-sync.exe", "devctl": "devctl.exe",
+			"fzt": "fzt.exe", "fzt-automate": "fzt-automate.exe",
+			"fzt-picker": "fzt-picker.exe", "spt": "spotify_player.exe", "tmux": "tmux.exe",
+		}
+		if entry, managed := entries[name]; managed {
+			if file == "" {
+				file = entry
+			}
+			p := filepath.Join(os.Getenv("ProgramFiles"), "at-home", name, "current", file)
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+				return p, nil
+			}
+			return "", fmt.Errorf("managed tool %s is missing %s; run home-sync tools", name, p)
+		}
+	}
 	c, ok := readToolCurrent(toolsNas, name)
 	if !ok {
 		if c, ok = readToolCurrent(toolsLocal, name); !ok {

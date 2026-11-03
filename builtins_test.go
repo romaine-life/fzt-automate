@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -41,13 +42,32 @@ func TestToolPaths(t *testing.T) {
 	write(filepath.Join(nas, "spt", "v2", "other.exe"), "")
 	write(filepath.Join(local, "spt", "v2", "spotify_player.exe"), "")
 	write(filepath.Join(nas, "spt", "config", "app.toml"), "")
+	if runtime.GOOS == "windows" {
+		programFiles := t.TempDir()
+		t.Setenv("ProgramFiles", programFiles)
+		managed := filepath.Join(programFiles, "at-home", "spt", "current")
+		write(filepath.Join(managed, "spotify_player.exe"), "")
+		write(filepath.Join(managed, "other.exe"), "")
+		for arg, file := range map[string]string{"tool:spt": "spotify_player.exe", "tool:spt/other.exe": "other.exe"} {
+			if got, err := expandArg(arg); err != nil || got != filepath.Join(managed, file) {
+				t.Fatalf("managed %s = %q %v", arg, got, err)
+			}
+		}
+		if err := os.Remove(filepath.Join(managed, "spotify_player.exe")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := expandArg("tool:spt"); err == nil || !strings.Contains(err.Error(), "home-sync tools") {
+			t.Fatalf("missing managed executable must not use stale NAS/Drive copies: %v", err)
+		}
+	} else {
 
-	// The Drive copy when it holds the release, else the NAS.
-	if got, err := expandArg("tool:spt"); err != nil || got != filepath.Join(local, "spt", "v2", "spotify_player.exe") {
-		t.Fatalf("tool:spt = %q %v", got, err)
-	}
-	if got, err := expandArg("tool:spt/other.exe"); err != nil || got != filepath.Join(nas, "spt", "v2", "other.exe") {
-		t.Fatalf("tool:spt/other.exe = %q %v", got, err)
+		// The Drive copy when it holds the release, else the NAS.
+		if got, err := expandArg("tool:spt"); err != nil || got != filepath.Join(local, "spt", "v2", "spotify_player.exe") {
+			t.Fatalf("tool:spt = %q %v", got, err)
+		}
+		if got, err := expandArg("tool:spt/other.exe"); err != nil || got != filepath.Join(nas, "spt", "v2", "other.exe") {
+			t.Fatalf("tool:spt/other.exe = %q %v", got, err)
+		}
 	}
 	if got, err := expandArg("tool-config:spt"); err != nil || got != filepath.Join(nas, "spt", "config") {
 		t.Fatalf("tool-config:spt = %q %v", got, err)
