@@ -64,3 +64,7 @@ jobs:
           $body = @{ ref = $repo.default_branch; inputs = @{ tag = $tag } } | ConvertTo-Json
           Invoke-RestMethod -Method Post "$api/actions/workflows/build.yml/dispatches" -Headers $h -ContentType 'application/json' -Body $body | Out-Null
           Write-Host "Dispatched build.yml for $tag"
+          $mirrors = @(Invoke-RestMethod "$api/push_mirrors" -Headers $h)
+          if ($mirrors.Count -gt 0 -and $mirrors[0].remote_name) {
+            Invoke-RestMethod -Method Post "$api/push_mirrors-sync" -Headers $h | Out-Null
+          }
