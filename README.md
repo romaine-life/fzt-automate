@@ -10,19 +10,10 @@ Linux, and macOS binaries. The macOS binary is cross-compiled Go; no Mac
 runner is needed. Run `dispatch.yml` to update fzt and fzt-terminal through
 a checked pull request before releasing.
 
-After the Forgejo release has all three assets, publish its Windows binary
-to the home tools share from PowerShell:
-
-```powershell
-.\publish.ps1
-```
-
-`publish.ps1` downloads the latest Forgejo release and calls:
-
-```powershell
-publish-tool -Name fzt-automate -Version $tag -Path $exe `
-    -Entry fzt-automate.exe -Repo $web -Commit $commit
-```
+After the Forgejo release has all three assets, CI starts home-sync on every
+PC. It verifies the signed Windows binary and switches the managed installation
+at `C:\Program Files\at-home\fzt-automate\current`. Existing terminals use that
+stable path immediately. The manual `publish.ps1` was retired by HOMECFG-110.
 
 Failed menu launches and commands are saved as JSON lines under
 `~/.fzt-automate/failures/` on Windows, or `failures/` in the platform's config
