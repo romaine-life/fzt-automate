@@ -98,3 +98,16 @@ func TestAgo(t *testing.T) {
 		}
 	}
 }
+
+func TestFolderLabel(t *testing.T) {
+	cases := map[string]string{
+		`D:\repos\at-tmux`: "at-tmux",
+		`D:\repos\chess-tactics\.claude\worktrees\walls-rendering-above-level-cf9d38`: "chess-tactics (worktree)",
+		`D:\workspace\at-home-tools\homecfg-129`:                                      "homecfg-129",
+	}
+	for in, want := range cases {
+		if got := folderLabel(in); got != want {
+			t.Errorf("folderLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

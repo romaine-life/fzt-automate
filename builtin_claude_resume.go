@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -187,6 +188,16 @@ func typedPrompt(raw json.RawMessage) string {
 	return text
 }
 
+// folderLabel names a session's folder: its last part, or the repo for one of
+// Claude Code's worktrees (<repo>\.claude\worktrees\<name>).
+func folderLabel(folder string) string {
+	f := filepath.ToSlash(folder)
+	if repo, _, ok := strings.Cut(f, "/.claude/worktrees/"); ok {
+		return path.Base(repo) + " (worktree)"
+	}
+	return path.Base(f)
+}
+
 func ago(t, now time.Time) string {
 	switch d := now.Sub(t); {
 	case d < time.Hour:
@@ -212,10 +223,11 @@ func runResumeClaude(ctx context.Context, out io.Writer, args []string) (string,
 		return "", errors.New("no Claude sessions on this PC")
 	}
 	now := time.Now()
-	items := []core.Item{{Fields: []string{"Name", "Folder", "Last active", "First prompt"}, Depth: -1}}
+	items := []core.Item{{Fields: []string{"Name", "Folder · last active · first prompt"}, Depth: -1}}
 	for i, s := range sessions {
 		items = append(items, core.Item{
-			Fields:     []string{s.name, filepath.Base(s.folder), ago(s.active, now), oneLine(s.prompt, 120)},
+			Fields: []string{oneLine(s.name, 40),
+				fmt.Sprintf("%s · %s · %s", oneLine(folderLabel(s.folder), 24), ago(s.active, now), oneLine(s.prompt, 120))},
 			ParentIdx:  -1,
 			PropertyOf: -1,
 			Action:     &core.ItemAction{Type: "command", Target: fmt.Sprint(i)},
