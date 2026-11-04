@@ -387,6 +387,9 @@ func takeoverArgs(window, client string, s step) ([]string, error) {
 	if s.kind == stepScript {
 		args = append(args, "-e", "AT_PICK=1")
 	}
+	if s.kind == stepBuiltin {
+		args = append(args, "-e", originWindowEnv+"="+window)
+	}
 	args = append(args, tmuxSwitchOnDraw(client)...)
 	return append(args, tmuxProgram(takeoverProgram(s))...), nil
 }

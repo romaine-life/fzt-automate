@@ -106,15 +106,20 @@ func runLaunchClaude(ctx context.Context, out io.Writer, args []string) (string,
 	if err != nil || dir == "" {
 		return "", err
 	}
+	return "", startClaude(dir)
+}
+
+// startClaude has tmux restart this pane as Claude Code in dir.
+func startClaude(dir string) error {
 	pane := os.Getenv("TMUX_PANE")
 	if pane == "" {
-		return "", errors.New("not in a tmux pane: run it from the at menu")
+		return errors.New("not in a tmux pane: run it from the at menu")
 	}
 	tmuxArgs := append([]string{"respawn-pane", "-k", "-t", pane, "-c", dir}, tmuxProgram([]string{"claude"})...)
 	if msg, err := exec.Command("tmux", tmuxArgs...).CombinedOutput(); err != nil {
-		return "", fmt.Errorf("tmux couldn't start claude: %s", strings.TrimSpace(string(msg)))
+		return fmt.Errorf("tmux couldn't start claude: %s", strings.TrimSpace(string(msg)))
 	}
-	return "", nil
+	return nil
 }
 
 func ollamaRunningRows(ctx context.Context, args []string) ([]folderRow, error) {
