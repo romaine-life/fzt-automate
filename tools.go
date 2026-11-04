@@ -39,6 +39,7 @@ func toolPath(name, file string) (string, error) {
 			"at-home-tools": "home-sync.exe", "devctl": "devctl.exe",
 			"fzt": "fzt.exe", "fzt-automate": "fzt-automate.exe",
 			"fzt-picker": "fzt-picker.exe", "spt": "spotify_player.exe", "tmux": "tmux.exe",
+			"guitar-tabs": "guitar-tabs.exe",
 		}
 		if entry, managed := entries[name]; managed {
 			if file == "" {

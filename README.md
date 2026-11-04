@@ -15,6 +15,10 @@ PC. It verifies the signed Windows binary and switches the managed installation
 at `C:\Program Files\at-home\fzt-automate\current`. Existing terminals use that
 stable path immediately. The manual `publish.ps1` was retired by HOMECFG-110.
 
+The guitar-tabs menu action uses its managed installation at
+`C:\Program Files\at-home\guitar-tabs\current\guitar-tabs.exe`. A missing
+installation reports an error; it never launches an old NAS or Drive copy.
+
 Failed menu launches and commands are saved as JSON lines under
 `~/.fzt-automate/failures/` on Windows, or `failures/` in the platform's config
 directory elsewhere (`FZT_CONFIG_DIR` overrides it). Each record includes the

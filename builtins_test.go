@@ -45,6 +45,20 @@ func TestToolPaths(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		programFiles := t.TempDir()
 		t.Setenv("ProgramFiles", programFiles)
+		write(filepath.Join(nas, "guitar-tabs", "current.json"), `{"version":"v2","entry":"guitar-tabs.exe"}`)
+		write(filepath.Join(nas, "guitar-tabs", "v2", "guitar-tabs.exe"), "stale")
+		write(filepath.Join(local, "guitar-tabs", "v2", "guitar-tabs.exe"), "stale")
+		guitarTabs := filepath.Join(programFiles, "at-home", "guitar-tabs", "current", "guitar-tabs.exe")
+		write(guitarTabs, "managed")
+		if got, err := expandArg("tool:guitar-tabs"); err != nil || got != guitarTabs {
+			t.Fatalf("managed guitar-tabs = %q %v", got, err)
+		}
+		if err := os.Remove(guitarTabs); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := expandArg("tool:guitar-tabs"); err == nil || !strings.Contains(err.Error(), "home-sync tools") {
+			t.Fatalf("missing managed guitar-tabs must not use stale copies: %v", err)
+		}
 		managed := filepath.Join(programFiles, "at-home", "spt", "current")
 		write(filepath.Join(managed, "spotify_player.exe"), "")
 		write(filepath.Join(managed, "other.exe"), "")
