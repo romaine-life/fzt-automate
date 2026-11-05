@@ -1,29 +1,29 @@
 package main
 
-// Search the archive of every Claude Code session (HOMECFG-84) and open the
-// one picked in VS Code at the part that matched (FZT-71; this was at's
-// claude-search.ps1 and lib/claude-search.py). The index is
-// \\NelsonNAS\claude-transcripts\index.sqlite, which nas-backup's weekly
-// archive job builds from the transcripts the home PCs copy to that share; it
-// is read here without writing anything, so sessions newer than the last
-// weekly run aren't in it.
+// Search every Claude Code session (HOMECFG-84) and open the one picked in VS
+// Code at the part that matched (FZT-71; this was at's claude-search.ps1 and
+// lib/claude-search.py). The session-index service on the NAS answers the
+// search as this machine and keeps its index current as the PCs copy
+// transcripts up (AHT-15); the session itself is read from the share.
 
 import (
 	"bufio"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/romaine-life/auth/client"
 	"github.com/romaine-life/fzt-terminal/tui"
 	"github.com/romaine-life/fzt/core"
-	_ "modernc.org/sqlite"
 )
 
 func init() {
@@ -31,54 +31,50 @@ func init() {
 		about: "search every past Claude session and open the one picked in VS Code", run: runClaudeSearch})
 }
 
-var (
-	transcriptShare = `\\NelsonNAS\claude-transcripts`
-	searchIndexURI  = "file:////NelsonNAS/claude-transcripts/index.sqlite?mode=ro&immutable=1"
-)
-
 const (
-	searchLimit = 300
-	toolLines   = 40
+	transcriptShare = `\\NelsonNAS\claude-transcripts`
+	sessionIndex    = "https://session-index.home.romaine.life"
+	searchLimit     = 300
+	searchTimeout   = 90 * time.Second
+	toolLines       = 40
 )
 
 type searchHit struct {
-	rowid                 int64
-	ts, pc, kind, snippet string
+	When    time.Time `json:"when"`
+	PC      string    `json:"pc"`
+	Session string    `json:"session"`
+	Who     string    `json:"who"`
+	Text    string    `json:"text"`
+	File    string    `json:"file"`
+	Line    int       `json:"line"`
 }
 
-func openSearchIndex() (*sql.DB, error) {
-	if _, err := os.Stat(filepath.Join(transcriptShare, "index.sqlite")); err != nil {
-		return nil, fmt.Errorf("no search index at %s\\index.sqlite: the NAS is unreachable, or the weekly archive job hasn't run yet", transcriptShare)
-	}
-	return sql.Open("sqlite", searchIndexURI)
+type searchResult struct {
+	Hits    []searchHit `json:"hits"`
+	Current time.Time   `json:"current"`
 }
 
-func searchArchive(ctx context.Context, db *sql.DB, words string) ([]searchHit, string, error) {
-	var built sql.NullString
-	_ = db.QueryRowContext(ctx, "SELECT max(at) FROM runs").Scan(&built)
-	query := fmt.Sprintf("SELECT rowid, substr(ts, 1, 16), pc, kind, snippet(parts, 0, '[', ']', '...', 16) "+
-		"FROM parts WHERE parts MATCH ? ORDER BY bm25(parts) LIMIT %d", searchLimit)
-	rows, err := db.QueryContext(ctx, query, words)
+func searchArchive(ctx context.Context, service, token, words string) (searchResult, error) {
+	var r searchResult
+	q := url.Values{"q": {words}, "limit": {strconv.Itoa(searchLimit)}}
+	req, err := http.NewRequestWithContext(ctx, "GET", service+"/search?"+q.Encode(), nil)
 	if err != nil {
-		// Not valid FTS syntax (a stray quote, a dash): search the words as plain terms.
-		var quoted []string
-		for _, w := range strings.Fields(words) {
-			quoted = append(quoted, `"`+strings.ReplaceAll(w, `"`, `""`)+`"`)
-		}
-		if rows, err = db.QueryContext(ctx, query, strings.Join(quoted, " ")); err != nil {
-			return nil, built.String, err
-		}
+		return r, err
 	}
-	defer rows.Close()
-	var hits []searchHit
-	for rows.Next() {
-		var h searchHit
-		if err := rows.Scan(&h.rowid, &h.ts, &h.pc, &h.kind, &h.snippet); err != nil {
-			return nil, built.String, err
-		}
-		hits = append(hits, h)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return r, fmt.Errorf("can't reach the session index: %w", err)
 	}
-	return hits, built.String, rows.Err()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+		return r, fmt.Errorf("the session index answered %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return r, fmt.Errorf("reading the session index's answer: %w", err)
+	}
+	return r, nil
 }
 
 func oneLine(text string, width int) string {
@@ -98,31 +94,33 @@ func runClaudeSearch(ctx context.Context, out io.Writer, args []string) (string,
 			return "", nil
 		}
 	}
-	db, err := openSearchIndex()
+	token, err := client.ReadMachineToken(client.ConfigDir())
+	if err != nil {
+		return "", fmt.Errorf("this machine couldn't sign in: %w", err)
+	}
+	searchCtx, cancel := context.WithTimeout(ctx, searchTimeout)
+	defer cancel()
+	result, err := searchArchive(searchCtx, sessionIndex, token, words)
 	if err != nil {
 		return "", err
 	}
-	defer db.Close()
-	hits, built, err := searchArchive(ctx, db, words)
-	if err != nil {
-		return "", err
-	}
-	if len(hits) == 0 {
-		return "", fmt.Errorf("nothing in the archive matches %q (index built %s)", words, built)
+	current := result.Current.Local().Format("2006-01-02 15:04")
+	if len(result.Hits) == 0 {
+		return "", fmt.Errorf("nothing in the archive matches %q (index current at %s)", words, current)
 	}
 
-	items := []core.Item{{Fields: []string{"When", "PC", "Kind", "Match"}, Depth: -1}}
-	for _, h := range hits {
+	items := []core.Item{{Fields: []string{"When", "PC", "Who", "Match"}, Depth: -1}}
+	for i, h := range result.Hits {
 		items = append(items, core.Item{
-			Fields:     []string{strings.Replace(h.ts, "T", " ", 1), h.pc, h.kind, oneLine(h.snippet, 160)},
+			Fields:     []string{h.When.Local().Format("2006-01-02 15:04"), h.PC, h.Who, oneLine(h.Text, 160)},
 			ParentIdx:  -1,
 			PropertyOf: -1,
-			Action:     &core.ItemAction{Type: "command", Target: strconv.FormatInt(h.rowid, 10)},
+			Action:     &core.ItemAction{Type: "command", Target: strconv.Itoa(i)},
 		})
 	}
 	pick, err := tui.Run(items, tui.Config{
 		Layout: "reverse", Border: true, HeaderLines: 1,
-		Title: fmt.Sprintf("%d matches for %s, best first (index built %s)", len(hits), words, built),
+		Title: fmt.Sprintf("%d matches for %s, best first (index current at %s)", len(result.Hits), words, current),
 	})
 	if err != nil {
 		return "", err
@@ -130,8 +128,11 @@ func runClaudeSearch(ctx context.Context, out io.Writer, args []string) (string,
 	if pick.Kind != "select" || pick.Item.Action == nil {
 		return "", nil
 	}
-	rowid, _ := strconv.ParseInt(pick.Item.Action.Target, 10, 64)
-	target, err := writeSession(ctx, db, rowid)
+	picked, err := strconv.Atoi(pick.Item.Action.Target)
+	if err != nil || picked < 0 || picked >= len(result.Hits) {
+		return "", fmt.Errorf("the picker returned %q, which isn't a match", pick.Item.Action.Target)
+	}
+	target, err := writeSession(result.Hits[picked])
 	if err != nil {
 		return "", err
 	}
@@ -143,12 +144,8 @@ func runClaudeSearch(ctx context.Context, out io.Writer, args []string) (string,
 
 // writeSession writes the session holding a hit as readable text and returns
 // "<file>:<line>" for the part that matched.
-func writeSession(ctx context.Context, db *sql.DB, rowid int64) (string, error) {
-	var rel, pc, session string
-	var target int
-	if err := db.QueryRowContext(ctx, "SELECT file, line, pc, session FROM parts WHERE rowid = ?", rowid).Scan(&rel, &target, &pc, &session); err != nil {
-		return "", fmt.Errorf("no result %d in the index", rowid)
-	}
+func writeSession(h searchHit) (string, error) {
+	rel, pc, session, target := h.File, h.PC, h.Session, h.Line
 	src, err := os.Open(filepath.Join(append([]string{transcriptShare}, strings.Split(rel, "/")...)...))
 	if err != nil {
 		return "", err
