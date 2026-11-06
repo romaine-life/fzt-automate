@@ -85,6 +85,17 @@ func oneLine(text string, width int) string {
 	return s
 }
 
+// homeToken is client.HomeToken; a seam for tests.
+var homeToken = client.HomeToken
+
+func sessionIndexToken(ctx context.Context) (string, error) {
+	credentials, err := homeToken(ctx, "session-index")
+	if err != nil {
+		return "", fmt.Errorf("this machine couldn't sign in: %w", err)
+	}
+	return credentials.Token, nil
+}
+
 func runClaudeSearch(ctx context.Context, out io.Writer, args []string) (string, error) {
 	words := strings.Join(args, " ")
 	if words == "" {
@@ -94,9 +105,9 @@ func runClaudeSearch(ctx context.Context, out io.Writer, args []string) (string,
 			return "", nil
 		}
 	}
-	token, err := client.ReadMachineToken(client.ConfigDir())
+	token, err := sessionIndexToken(ctx)
 	if err != nil {
-		return "", fmt.Errorf("this machine couldn't sign in: %w", err)
+		return "", err
 	}
 	searchCtx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()

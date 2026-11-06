@@ -163,8 +163,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Identity for whoami display is the cached machine account's name
-	// read without renewing: opening the menu never waits on the network.
+	// Identity for whoami display is the device's registered name: opening the
+	// menu never waits on the network.
 	identity := frontend.SignedInEmail(cfgDir)
 
 	menuVersion := readMenuVersion(cfgDir)

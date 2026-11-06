@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/romaine-life/auth/client"
 )
 
 func TestSearchArchiveAsksTheServiceSignedIn(t *testing.T) {
@@ -35,5 +37,31 @@ func TestSearchArchiveSaysWhatFailed(t *testing.T) {
 	_, err := searchArchive(context.Background(), srv.URL, "tok", "x")
 	if err == nil || !strings.Contains(err.Error(), "still starting") {
 		t.Fatal(err)
+	}
+}
+
+func TestSessionIndexTokenAsksForItsOwnRole(t *testing.T) {
+	old := homeToken
+	t.Cleanup(func() { homeToken = old })
+	homeToken = func(_ context.Context, role string) (client.Credentials, error) {
+		if role != "session-index" {
+			t.Fatalf("asked for role %q", role)
+		}
+		return client.Credentials{Token: "home"}, nil
+	}
+	if token, err := sessionIndexToken(context.Background()); err != nil || token != "home" {
+		t.Fatalf("got %q, %v", token, err)
+	}
+}
+
+func TestSessionIndexTokenSaysSignInFailed(t *testing.T) {
+	old := homeToken
+	t.Cleanup(func() { homeToken = old })
+	homeToken = func(context.Context, string) (client.Credentials, error) {
+		return client.Credentials{}, &client.AuthError{Kind: "unreachable", Detail: "cannot reach OpenBao at " + client.BaoURL}
+	}
+	_, err := sessionIndexToken(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "couldn't sign in") || !strings.Contains(err.Error(), "cannot reach OpenBao") {
+		t.Fatalf("got %v", err)
 	}
 }
