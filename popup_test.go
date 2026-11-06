@@ -275,6 +275,20 @@ func TestTakeoverOfAnOldCommandKeepsAFailureOnScreen(t *testing.T) {
 	}
 }
 
+// Rerunning an old command on a restore would repeat what it did; only those
+// are marked, so every other pick's program comes back.
+func TestOnlyAnOldCommandComesBackAsAShell(t *testing.T) {
+	const mark = "-o @session-set-shell=1"
+	args, _ := takeoverArgs("@3", "/dev/pty0", step{kind: stepScript, line: "gitprune"})
+	if got := strings.Join(args, " "); !strings.Contains(got, mark) {
+		t.Fatalf("takeover = %q", got)
+	}
+	args, _ = takeoverArgs("@3", "/dev/pty0", step{kind: stepProgram, args: []string{"guitar-tabs", ""}})
+	if got := strings.Join(args, " "); strings.Contains(got, mark) {
+		t.Fatalf("a program is marked: %q", got)
+	}
+}
+
 // A quick pick leaves the popup open; Escape at the top closes it.
 func TestPopupStaysOpenUntilClosed(t *testing.T) {
 	m := &popupMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}

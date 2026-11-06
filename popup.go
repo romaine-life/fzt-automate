@@ -375,7 +375,9 @@ func takeoverProgram(s step) []string {
 // for the client showing it. Given two or more arguments, tmux starts the
 // program itself, with no shell. A tab whose program fails stays open with
 // its output (remain-on-exit failed, set as the window is made, before the
-// program can end).
+// program can end). An old command's tab comes back from a tmux restore as a
+// shell (@session-set-shell): its prompt after a failure is a shell, and
+// rerunning it would repeat what it did.
 func takeoverArgs(window, client string, s step) ([]string, error) {
 	if window == "" || client == "" {
 		return nil, errors.New("tmux didn't say which tab the menu is over (--window, --client)")
@@ -385,7 +387,7 @@ func takeoverArgs(window, client string, s step) ([]string, error) {
 		args = append(args, "-c", s.dir)
 	}
 	if s.kind == stepScript {
-		args = append(args, "-e", "AT_PICK=1")
+		args = append(args, "-e", "AT_PICK=1", "-o", "@session-set-shell=1")
 	}
 	if s.kind == stepBuiltin {
 		args = append(args, "-e", originWindowEnv+"="+window)
