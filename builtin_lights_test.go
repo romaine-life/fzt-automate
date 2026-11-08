@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -20,9 +23,30 @@ type fakeHub struct {
 	nightOn   bool
 	stopped   bool
 	failPaths map[string]bool
+	// loginOn answers as Hub Login Security does: admin pages redirect to /login
+	// until the form sign-in sets the session cookie.
+	loginOn bool
+	signIns int
 }
 
 func (f *fakeHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if f.loginOn && r.URL.Path == "/login" && r.Method == http.MethodPost {
+		r.ParseForm()
+		f.mu.Lock()
+		f.signIns++
+		f.mu.Unlock()
+		if r.Form.Get("username") == "nelson" && r.Form.Get("password") == "secret" && r.Form.Get("submit") == "Login" {
+			http.SetCookie(w, &http.Cookie{Name: "HUBSESSION", Value: "s1", Path: "/"})
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/login?loginError=true", http.StatusFound)
+		return
+	}
+	if c, err := r.Cookie("HUBSESSION"); f.loginOn && (err != nil || c.Value != "s1") {
+		http.Redirect(w, r, "/login?loginRedirect="+url.QueryEscape(r.URL.Path), http.StatusFound)
+		return
+	}
 	body, _ := io.ReadAll(r.Body)
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -128,6 +152,53 @@ func TestLightsReportAFailedCall(t *testing.T) {
 	done, out, err, _ := runLightsAgainst(t, f, "off", "30")
 	if err == nil || done != "" || !strings.Contains(err.Error(), "off 30 did not fully apply: 6 hub call(s) failed") || !strings.Contains(out, "warning: runmethod \"off\" failed for device 96") {
 		t.Fatalf("done %q err %v out %s", done, err, out)
+	}
+}
+
+// withHubLogin points the lights at a login file holding content ("" for none).
+func withHubLogin(t *testing.T, content string) {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "login.json")
+	if content != "" {
+		os.WriteFile(file, []byte(content), 0o600)
+	}
+	old := hubLoginPath
+	hubLoginPath = func() string { return file }
+	t.Cleanup(func() { hubLoginPath = old })
+}
+
+func TestLightsSignInWhenTheHubAsks(t *testing.T) {
+	withHubLogin(t, `{"username":"nelson","password":"secret"}`)
+	f := &fakeHub{loginOn: true}
+	done, _, err, calls := runLightsAgainst(t, f, "on")
+	off := &fakeHub{}
+	_, _, _, want := runLightsAgainst(t, off, "on")
+	if err != nil || done == "" || strings.Join(calls, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("err %v done %q\ncalls %v\nwant %v", err, done, calls, want)
+	}
+	if f.signIns != 1 {
+		t.Fatalf("signed in %d times; the session should last the command", f.signIns)
+	}
+	if off.signIns != 0 {
+		t.Fatal("signed in to a hub that didn't ask")
+	}
+}
+
+func TestLightsWithARefusedLoginChangeNothing(t *testing.T) {
+	for _, tc := range []struct{ login, want string }{
+		{`{"username":"nelson","password":"wrong"}`, "the hub refused the login"},
+		{"", "home-sync writes it from OpenBao"},
+		{`{"username":"nelson"}`, "no hub username and password"},
+	} {
+		withHubLogin(t, tc.login)
+		f := &fakeHub{loginOn: true}
+		done, _, err, calls := runLightsAgainst(t, f, "on")
+		if err == nil || done != "" || !strings.Contains(err.Error(), "nothing was changed: ") || !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), "wrong") {
+			t.Fatalf("login %q: err %v", tc.login, err)
+		}
+		if len(calls) != 0 {
+			t.Fatalf("login %q: changed %v", tc.login, calls)
+		}
 	}
 }
 

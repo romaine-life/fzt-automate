@@ -70,17 +70,32 @@ func (h *hub) warn(format string, args ...any) {
 func (h *hub) do(method, path, contentType string, body []byte, timeout time.Duration) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(h.ctx, timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, hubitatBase+path, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
+	for signedIn := false; ; signedIn = true {
+		req, err := http.NewRequestWithContext(ctx, method, hubitatBase+path, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		resp, err := h.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if !hubLoginRedirect(resp) {
+			return readHubReply(resp)
+		}
+		resp.Body.Close()
+		if signedIn {
+			return nil, hubLoginError{"the hub still asks for its login after signing in"}
+		}
+		if err := hubSignIn(ctx, h.client); err != nil {
+			return nil, err
+		}
 	}
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
-	}
-	resp, err := h.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
+}
+
+func readHubReply(resp *http.Response) ([]byte, error) {
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -215,7 +230,7 @@ func runLights(ctx context.Context, out io.Writer, args []string) (string, error
 	if len(args) == 0 {
 		return "", usageError(b)
 	}
-	h := &hub{ctx: ctx, out: out, client: http.DefaultClient, sleep: func(d time.Duration) { hubPause(ctx, d) }}
+	h := &hub{ctx: ctx, out: out, client: newHubClient(), sleep: func(d time.Duration) { hubPause(ctx, d) }}
 	var do func() string
 	switch args[0] {
 	case "on":
@@ -270,6 +285,10 @@ func runLights(ctx context.Context, out io.Writer, args []string) (string, error
 	}
 
 	if _, err := h.do(http.MethodGet, fmt.Sprintf("/device/fullJson/%d", nightDevice), "", nil, 5*time.Second); err != nil {
+		var login hubLoginError
+		if errors.As(err, &login) {
+			return "", fmt.Errorf("nothing was changed: %v", err)
+		}
 		return "", fmt.Errorf("can't reach the Hubitat hub at %s, nothing was changed. This only works on the home network. (%v)", hubitatBase, err)
 	}
 	done := do()
