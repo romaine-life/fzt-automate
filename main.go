@@ -286,6 +286,9 @@ func runHere(line string, scripts bool) (int, bool) {
 		cmd = scriptCommand(s.line)
 		cmd.Env = append(os.Environ(), "AT_PICK=1")
 	case stepProgram:
+		if s.app != "" && os.Getenv("TMUX") != "" {
+			return openAppHere(line, s), true
+		}
 		if cmd, err = programCommand(s.args); err != nil {
 			fmt.Fprintln(os.Stderr, logFailure("", line, "", fmt.Sprintf("fzt-automate: %v", err)))
 			return 1, true
@@ -305,6 +308,30 @@ func runHere(line string, scripts bool) (int, bool) {
 		return 1, true
 	}
 	return 0, true
+}
+
+// openAppHere brings a system app's window to this terminal's tmux client,
+// as the popup does; outside tmux the app runs here as a program.
+func openAppHere(line string, s step) int {
+	fail := func(err error) int {
+		fmt.Fprintln(os.Stderr, logFailure("", line, "", fmt.Sprintf("fzt-automate: %v", err)))
+		return 1
+	}
+	client, err := exec.Command("tmux", "display-message", "-p", "#{client_name}").Output()
+	if err != nil {
+		return fail(fmt.Errorf("tmux didn't say which terminal this is: %w", err))
+	}
+	if err := openSystemSession(); err != nil {
+		return fail(err)
+	}
+	cmd := exec.Command("tmux", appArgs(strings.TrimSpace(string(client)), s)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if text := strings.TrimSpace(string(out)); text != "" {
+			return fail(errors.New(text))
+		}
+		return fail(err)
+	}
+	return 0
 }
 
 // pickLine is the line the at wrapper runs for a pick: the picked item's

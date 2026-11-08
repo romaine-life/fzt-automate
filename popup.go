@@ -61,8 +61,11 @@ func classify(item core.Item, text string, hasInput bool) (pickKind, string) {
 // isTakeover says whether a resolved pick opens as its own tab. A built-in
 // knows whether it talks to the person; a program or an at command not yet
 // moved is a takeover unless its entry is marked quick, so nothing lands in
-// the three-line panel by accident.
+// the three-line panel by accident. A system app always opens in its window.
 func isTakeover(s step, item core.Item) bool {
+	if s.app != "" {
+		return true
+	}
 	if s.kind == stepBuiltin {
 		return s.b.terminal
 	}
@@ -264,10 +267,21 @@ func (m *popupMenu) runTakeover(name string, s step, live liveMenu) {
 	cmd := exec.Command("tmux", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	m.runFrozen(func() (job, error) { return startCmd(cmd) }, "starting "+name+"…", name, live, func(err error, stopped bool) (string, int) {
+	where := "after yours"
+	if s.app != "" {
+		where = "in " + systemSession
+	}
+	m.runFrozen(func() (job, error) {
+		if s.app != "" {
+			if err := openSystemSession(); err != nil {
+				return job{}, err
+			}
+		}
+		return startCmd(cmd)
+	}, "starting "+name+"…", name, live, func(err error, stopped bool) (string, int) {
 		switch {
 		case stopped:
-			return "stopped waiting for " + name + "; its tab is after yours", core.PanelFailed
+			return "stopped waiting for " + name + "; its tab is " + where, core.PanelFailed
 		case err != nil:
 			if text := strings.TrimSpace(stderr.String()); text != "" {
 				return text, core.PanelFailed
@@ -382,6 +396,9 @@ func takeoverArgs(window, client string, s step) ([]string, error) {
 	if window == "" || client == "" {
 		return nil, errors.New("tmux didn't say which tab the menu is over (--window, --client)")
 	}
+	if s.app != "" {
+		return appArgs(client, s), nil
+	}
 	args := []string{"new-window", "-d", "-a", "-t", window, "-o", "remain-on-exit=failed"}
 	if s.dir != "" {
 		args = append(args, "-c", s.dir)
@@ -394,4 +411,34 @@ func takeoverArgs(window, client string, s step) ([]string, error) {
 	}
 	args = append(args, tmuxSwitchOnDraw(client)...)
 	return append(args, tmuxProgram(takeoverProgram(s))...), nil
+}
+
+// systemSession is the tmux session system apps live in.
+const systemSession = "system"
+
+// appArgs builds the tmux command that brings a system app's one window to
+// client (at-tmux new-window -M): moved into the system session from wherever
+// it is, started again if its program has stopped, or made when there is none.
+// The window stays when its program ends, for any reason, saying so, and Enter
+// starts it again (remain-on-exit relaunch). It keeps its own folder, not the
+// tab's the menu was over, since a relaunch starts it there.
+func appArgs(client string, s step) []string {
+	args := []string{"new-window", "-d", "-M", s.app, "-t", systemSession + ":", "-o", "remain-on-exit=relaunch"}
+	args = append(args, tmuxSwitchOnDraw(client)...)
+	return append(args, tmuxProgram(s.args)...)
+}
+
+// openSystemSession makes a missing system session whole first, through the
+// home config's system-session, as the alerts window does (at-home-tools).
+func openSystemSession() error {
+	if exec.Command("tmux", "has-session", "-t", "="+systemSession).Run() == nil {
+		return nil
+	}
+	if out, err := exec.Command("tmux", "system-session").CombinedOutput(); err != nil {
+		if text := strings.TrimSpace(string(out)); text != "" {
+			return fmt.Errorf("no %s session, and system-session didn't make one: %s", systemSession, text)
+		}
+		return fmt.Errorf("no %s session, and system-session didn't make one: %w", systemSession, err)
+	}
+	return nil
 }

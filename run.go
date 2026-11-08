@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // stepKind is what an entry's action line names.
@@ -25,21 +26,35 @@ type step struct {
 	args []string // the built-in's arguments, or the program and its arguments
 	line string   // the line itself, for a script
 	dir  string   // the folder it runs in, when known (tabdir.go)
+	app  string   // a system app's name (system:<name>), else empty
 }
+
+// systemPrefix starts a system app's line: system:<name> and its program. The
+// app has one window, in tmux's system session (TMUX-167).
+const systemPrefix = "system:"
 
 // resolve reads an action line. Its first word is a built-in, else an at
 // command still in the at release (a .ps1 in AT_SCRIPTS, run as before until
 // it moves), else a program: tool:, tool-config: and ${NAME} words are
-// resolved, and the program is found on PATH.
+// resolved, and the program is found on PATH. A line starting system:<name>
+// is a system app, which runs a program.
 func resolve(line string) (step, error) {
 	args, err := splitArgs(line)
 	if err != nil {
 		return step{}, err
 	}
+	app, isApp := "", false
+	if len(args) > 0 && strings.HasPrefix(args[0], systemPrefix) {
+		app, isApp = strings.TrimPrefix(args[0], systemPrefix), true
+		args = args[1:]
+	}
 	if len(args) == 0 {
 		return step{}, errors.New("the action is empty")
 	}
 	if b, ok := builtins[args[0]]; ok {
+		if isApp {
+			return step{}, fmt.Errorf("system:%s runs %s, a built-in; a system app runs a program", app, args[0])
+		}
 		rest, err := expandArgs(args[1:])
 		if err != nil {
 			return step{}, err
@@ -47,13 +62,16 @@ func resolve(line string) (step, error) {
 		return step{kind: stepBuiltin, b: b, args: rest}, nil
 	}
 	if isScript(args[0]) {
+		if isApp {
+			return step{}, fmt.Errorf("system:%s runs %s, an at command not yet moved off PowerShell; a system app runs a program", app, args[0])
+		}
 		return step{kind: stepScript, line: line}, nil
 	}
 	args, err = expandArgs(args)
 	if err != nil {
 		return step{}, err
 	}
-	return step{kind: stepProgram, args: args}, nil
+	return step{kind: stepProgram, args: args, app: app}, nil
 }
 
 // isScript says whether name is a command in the at release on AT_SCRIPTS.

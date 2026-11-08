@@ -32,6 +32,15 @@ a new tmux window and then fails keeps its pane through `remain-on-exit=failed`;
 tmux also records its exit in its own error history. The latest quick pick's
 full output remains in `last-output.txt` beside the menu cache.
 
+An action starting `system:<name>` is a system app: one window in the `system`
+session, not a new tab per pick (TMUX-167). The pick goes to the window marked
+`@<name>-window` wherever it is, moving it into `system` and starting its program
+again if it has stopped; with none, it makes the window (at-tmux `new-window -M`).
+The window stays when the program ends, saying so, and Enter starts it again
+(`remain-on-exit relaunch`). A missing `system` session is made first by the home
+config's `system-session`. A system app runs a program, not a built-in or an at
+command still on PowerShell.
+
 `launch-opencode [start-folder]` picks a folder and replaces its tmux pane with
 OpenCode, using the Anthropic API login in `~/.local/share/opencode/auth.json`
 (`XDG_DATA_HOME` overrides the data directory). Home-sync provisions the current
