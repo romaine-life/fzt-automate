@@ -51,7 +51,8 @@ or API logins report an error before the picker; a failed launch keeps its tab.
 
 `work-on-app claude|codex` opens a new tab running that agent in the repo of the app
 in the tab you came from, so you don't need to remember which repo holds it. It
-reads the pane's process, then `machine/state.json`: `tools` for what home-sync
+reads what the pane runs (below its own process first, so an app the at menu
+started isn't taken for fzt-automate), then `machine/state.json`: `tools` for what home-sync
 installs, `appRepos` for the rest. A repo this PC hasn't cloned is cloned to
 `D:\repos`; a tab with no recognized app gets a folder picker that says so.
 

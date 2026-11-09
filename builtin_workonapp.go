@@ -70,9 +70,12 @@ func appRepos(file string) (map[string]string, error) {
 	return repos, nil
 }
 
-// findApp walks down from the pane's own process, newest child first, as
-// at-tmux's pane_current_command does, and gives the first known program. The
-// second result names what the pane is running when no app was recognized.
+// findApp walks down from the pane's own process, newest child first, and
+// gives the first known program. As in at-tmux's pane_current_command, the
+// pane's own process counts only when nothing below it does: it is the shell
+// or launcher the app runs in, and an app the at menu starts runs under
+// fzt-automate. The second result names what the pane is running when no app
+// was recognized.
 func findApp(procs []process, root uint32, repos map[string]string) (repo, running string) {
 	children := map[uint32][]process{}
 	var top *process
@@ -86,23 +89,31 @@ func findApp(procs []process, root uint32, repos map[string]string) (repo, runni
 	if top == nil {
 		return "", ""
 	}
-	queue := []process{*top}
-	for len(queue) > 0 {
+	jobs := func(p process) []process {
+		var kids []process
+		for _, k := range children[p.pid] {
+			if k.started >= p.started && !strings.EqualFold(k.exe, "conhost.exe") {
+				kids = append(kids, k)
+			}
+		}
+		sort.SliceStable(kids, func(i, j int) bool { return kids[i].started > kids[j].started })
+		return kids
+	}
+	for queue := jobs(*top); len(queue) > 0; queue = queue[1:] {
 		p := queue[0]
-		queue = queue[1:]
 		if repo, ok := repos[strings.ToLower(p.exe)]; ok {
 			return repo, ""
 		}
 		if running == "" {
 			running = p.exe
 		}
-		kids := children[p.pid]
-		sort.SliceStable(kids, func(i, j int) bool { return kids[i].started > kids[j].started })
-		for _, k := range kids {
-			if k.started >= p.started && !strings.EqualFold(k.exe, "conhost.exe") {
-				queue = append(queue, k)
-			}
-		}
+		queue = append(queue, jobs(p)...)
+	}
+	if repo, ok := repos[strings.ToLower(top.exe)]; ok {
+		return repo, ""
+	}
+	if running == "" {
+		running = top.exe
 	}
 	return "", running
 }

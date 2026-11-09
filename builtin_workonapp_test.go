@@ -80,6 +80,32 @@ func TestFindAppPrefersTheNewestChild(t *testing.T) {
 	}
 }
 
+// The at menu starts an app as a child of fzt-automate, the pane's own
+// process, which home-sync also installs (TMUX-171).
+func TestFindAppSkipsTheLauncherItRunsUnder(t *testing.T) {
+	procs := []process{
+		{pid: 10, parent: 1, exe: "fzt-automate.exe", started: 100},
+		{pid: 11, parent: 10, exe: "pwsh.exe", started: 101},
+		{pid: 12, parent: 11, exe: "guitar-tabs.exe", started: 102},
+	}
+	repos := sampleRepos(t)
+	repos["fzt-automate.exe"] = "romaine-life/fzt-automate"
+	if repo, _ := findApp(procs, 10, repos); repo != "romaine-life/guitar-tabs" {
+		t.Fatalf("repo = %q", repo)
+	}
+}
+
+func TestFindAppNamesTheJobBeforeTheShell(t *testing.T) {
+	procs := []process{
+		{pid: 10, parent: 1, exe: "pwsh.exe", started: 100},
+		{pid: 11, parent: 10, exe: "vim.exe", started: 101},
+	}
+	repo, running := findApp(procs, 10, sampleRepos(t))
+	if repo != "" || running != "vim.exe" {
+		t.Fatalf("repo = %q, running = %q", repo, running)
+	}
+}
+
 func TestFindAppIgnoresAChildOfAReusedParentID(t *testing.T) {
 	procs := []process{
 		{pid: 10, parent: 1, exe: "pwsh.exe", started: 100},
