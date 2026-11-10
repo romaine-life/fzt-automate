@@ -6,8 +6,8 @@ require (
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/romaine-life/auth v0.1.20
 	github.com/romaine-life/fzt v0.2.99
-	github.com/romaine-life/fzt-frontend v0.1.53
-	github.com/romaine-life/fzt-terminal v0.1.136
+	github.com/romaine-life/fzt-frontend v0.1.54
+	github.com/romaine-life/fzt-terminal v0.1.137
 	golang.org/x/sys v0.49.0
 )
 
