@@ -58,6 +58,10 @@ the package's executable directly, bypassing npm's command shim. Missing install
 or API logins report an error before the picker; a failed launch keeps its tab.
 `launch-claude` and its subscription billing remain the default.
 
+`launch-at-claude [start-folder]` picks a folder the same way and replaces its tmux
+pane with at-claude, the terminal harness, from home-sync's install; the picker
+opens at `D:\repos` unless a start folder is given.
+
 `work-on-app claude|codex` opens a new tab running that agent in the repo of the app
 in the tab you came from, so you don't need to remember which repo holds it. It
 reads what the pane runs (below its own process first, so an app the at menu

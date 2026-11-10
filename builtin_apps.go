@@ -18,6 +18,8 @@ func init() {
 		about: "run a program in its own tab and keep its output there until Enter", run: runShow})
 	register(&builtin{name: "explore", terminal: true, about: "pick a folder, then open it in Explorer", run: runExplore})
 	register(&builtin{name: "launch-claude", terminal: true, about: "pick a folder, then start Claude Code there in this tab", run: runLaunchClaude})
+	register(&builtin{name: "launch-at-claude", usage: "[start-folder]", terminal: true,
+		about: "pick a folder, then start at-claude there in this tab", run: runLaunchAtClaude})
 	register(&builtin{name: "launch-opencode", usage: "[start-folder]", terminal: true,
 		about: "pick a folder, then start OpenCode with the Anthropic API key in this tab", run: runLaunchOpenCode})
 	register(&builtin{name: "ollama-running", about: "folder: the ollama models running now; picking one stops it", rows: ollamaRunningRows})
@@ -109,15 +111,45 @@ func runLaunchClaude(ctx context.Context, out io.Writer, args []string) (string,
 	return "", startClaude(dir)
 }
 
+// runLaunchAtClaude is launch-claude for at-claude, the terminal harness: the
+// folder picked, then this pane restarted as at-claude there.
+func runLaunchAtClaude(ctx context.Context, out io.Writer, args []string) (string, error) {
+	if len(args) > 1 {
+		return "", usageError(builtins["launch-at-claude"])
+	}
+	if os.Getenv("TMUX_PANE") == "" {
+		return "", errors.New("not in a tmux pane: run it from the at menu")
+	}
+	program, err := toolPath("at-claude", "")
+	if err != nil {
+		return "", err
+	}
+	start := `D:\repos`
+	if len(args) == 1 {
+		start = args[0]
+	}
+	dir, err := pickFolder(ctx, "--title", "Launch at-claude in", "--start-dir", start)
+	if err != nil || dir == "" {
+		return "", err
+	}
+	return "", respawnAs(dir, "at-claude", program)
+}
+
 // startClaude has tmux restart this pane as Claude Code in dir.
 func startClaude(dir string) error {
+	return respawnAs(dir, "claude", "claude")
+}
+
+// respawnAs has tmux restart this pane as program in dir, so the tab is the
+// program's and closes with it; name is how an error refers to it.
+func respawnAs(dir, name, program string) error {
 	pane := os.Getenv("TMUX_PANE")
 	if pane == "" {
 		return errors.New("not in a tmux pane: run it from the at menu")
 	}
-	tmuxArgs := append([]string{"respawn-pane", "-k", "-t", pane, "-c", dir}, tmuxProgram([]string{"claude"})...)
+	tmuxArgs := append([]string{"respawn-pane", "-k", "-t", pane, "-c", dir}, tmuxProgram([]string{program})...)
 	if msg, err := exec.Command("tmux", tmuxArgs...).CombinedOutput(); err != nil {
-		return fmt.Errorf("tmux couldn't start claude: %s", strings.TrimSpace(string(msg)))
+		return fmt.Errorf("tmux couldn't start %s: %s", name, strings.TrimSpace(string(msg)))
 	}
 	return nil
 }
