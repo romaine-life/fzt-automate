@@ -8,7 +8,7 @@ import (
 	"runtime"
 )
 
-// Legacy publications and shared settings remain on the NAS. On Windows,
+// Legacy publications remain on the NAS. On Windows,
 // home-sync owns executable releases under Program Files instead.
 var (
 	toolsNas   = `\\NelsonNAS\tools`
@@ -93,14 +93,18 @@ func managedToolPath(name, file string) (string, error) {
 	return "", fmt.Errorf("%s isn't a tool home-sync installs on this PC (not in %s); run home-sync tools", name, homeSyncTools)
 }
 
+// configNas holds each tool's shared settings as its own share, <name>-config, which the
+// home cluster can mount too (spt-config, SPT-35).
+var configNas = `\\NelsonNAS`
+
 // toolConfigDir is a tool's shared, unversioned settings folder, from the NAS
 // (the Drive copy when the NAS can't be read).
 func toolConfigDir(name string) (string, error) {
-	for _, root := range []string{toolsNas, toolsLocal} {
-		dir := filepath.Join(root, name, "config")
+	share := filepath.Join(configNas, name+"-config")
+	for _, dir := range []string{share, filepath.Join(toolsLocal, name, "config")} {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			return dir, nil
 		}
 	}
-	return "", fmt.Errorf("tool %s has no config folder in %s", name, toolsNas)
+	return "", fmt.Errorf("tool %s has no config folder %s", name, share)
 }

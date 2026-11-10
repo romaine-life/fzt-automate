@@ -27,9 +27,9 @@ func TestEveryBuiltinHasItsShape(t *testing.T) {
 
 func TestToolPaths(t *testing.T) {
 	nas, local := t.TempDir(), t.TempDir()
-	oldNas, oldLocal := toolsNas, toolsLocal
-	toolsNas, toolsLocal = nas, local
-	defer func() { toolsNas, toolsLocal = oldNas, oldLocal }()
+	oldNas, oldLocal, oldConfig := toolsNas, toolsLocal, configNas
+	toolsNas, toolsLocal, configNas = nas, local, nas
+	defer func() { toolsNas, toolsLocal, configNas = oldNas, oldLocal, oldConfig }()
 
 	write := func(path, body string) {
 		os.MkdirAll(filepath.Dir(path), 0o755)
@@ -41,7 +41,7 @@ func TestToolPaths(t *testing.T) {
 	write(filepath.Join(nas, "spt", "v2", "spotify_player.exe"), "")
 	write(filepath.Join(nas, "spt", "v2", "other.exe"), "")
 	write(filepath.Join(local, "spt", "v2", "spotify_player.exe"), "")
-	write(filepath.Join(nas, "spt", "config", "app.toml"), "")
+	write(filepath.Join(nas, "spt-config", "app.toml"), "")
 	unknown := "not published"
 	if runtime.GOOS == "windows" {
 		unknown = "isn't a tool home-sync installs"
@@ -110,7 +110,7 @@ func TestToolPaths(t *testing.T) {
 			t.Fatalf("tool:spt/other.exe = %q %v", got, err)
 		}
 	}
-	if got, err := expandArg("tool-config:spt"); err != nil || got != filepath.Join(nas, "spt", "config") {
+	if got, err := expandArg("tool-config:spt"); err != nil || got != filepath.Join(nas, "spt-config") {
 		t.Fatalf("tool-config:spt = %q %v", got, err)
 	}
 	if _, err := expandArg("tool:nothing"); err == nil || !strings.Contains(err.Error(), unknown) {
