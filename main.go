@@ -189,28 +189,17 @@ func main() {
 		UpdateRepo:         "romaine-life/fzt-automate",
 		UpdateAssetPrefix:  "fzt-automate",
 		UpdateBinaryName:   "fzt-automate",
+		// No edit or save commands: the menu changes only through fzt-frontend's API,
+		// where a Claude session edits it (HOMECFG-213), since a save commits it and
+		// starts home-sync on every PC.
 		FrontendCommands: []core.CommandItem{
 			{Name: "unload", Description: "Clear local menu cache", Action: "unload"},
 			{Name: "sync", Description: "Sync menu from cloud", Action: "sync"},
-			{Name: "save", Description: "Save changes to cloud", Action: "save"},
-			frontend.EditCommands(),
 			{Name: "update", Description: "Update fzt-automate to latest release", Action: "update"},
 			{Name: "states", Description: "Toggle state inspector banner (suppresses action execution)", Action: "toggle-states"},
 			{Name: "shortcuts", Description: "Keyboard shortcuts", Children: []core.CommandItem{
-				{Name: "shift", Description: "modifier key (all shortcuts)"},
-				{Name: "shift+enter", Description: "confirm action"},
+				{Name: "shift+enter", Description: "pick the item under the cursor"},
 				{Name: "shift+back", Description: "return to home"},
-				{Name: "S", Description: "sync menu from cloud"},
-				{Name: "W", Description: "save changes to cloud"},
-				{Name: "A", Description: "add item after cursor"},
-				{Name: "F", Description: "create folder at cursor"},
-				{Name: "R", Description: "edit item properties"},
-				{Name: "I", Description: "edit item properties"},
-				{Name: "D", Description: "delete highlighted item"},
-				{Name: "H", Description: "navigate left (vim)"},
-				{Name: "J", Description: "navigate down (vim)"},
-				{Name: "K", Description: "navigate up (vim)"},
-				{Name: "L", Description: "navigate right (vim)"},
 			}},
 		},
 	}

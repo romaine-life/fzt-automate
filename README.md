@@ -15,9 +15,18 @@ PC. It verifies the signed Windows binary and switches the managed installation
 at `C:\Program Files\at-home\fzt-automate\current`. Existing terminals use that
 stable path immediately. The manual `publish.ps1` was retired by HOMECFG-110.
 
-The guitar-tabs menu action uses its managed installation at
-`C:\Program Files\at-home\guitar-tabs\current\guitar-tabs.exe`. A missing
-installation reports an error; it never launches an old NAS or Drive copy.
+On Windows a `tool:<name>` action runs a tool home-sync installs:
+`C:\Program Files\at-home\<name>\current\<entry>`, where `<entry>` is the
+program home-sync's own list (`~/.home-sync/tools.json`) names, copied from
+the home profile's `machine/state.json`; `tool:<name>/<file>` is another file
+in that folder. So a new app needs only its `state.json` entry to launch from
+the menu, and this repo keeps no list of tools: a test launches one its code
+has never heard of (HOMECFG-213). A tool missing from the list or from its
+folder reports an error; it never launches an old NAS or Drive copy.
+
+The menu has no edit or save commands. It changes only through
+fzt-frontend's API, where a Claude session edits it: a save commits the menu
+and starts home-sync on every PC.
 
 Failed menu launches and commands are saved as JSON lines under
 `~/.fzt-automate/failures/` on Windows, or `failures/` in the platform's config

@@ -42,9 +42,36 @@ func TestToolPaths(t *testing.T) {
 	write(filepath.Join(nas, "spt", "v2", "other.exe"), "")
 	write(filepath.Join(local, "spt", "v2", "spotify_player.exe"), "")
 	write(filepath.Join(nas, "spt", "config", "app.toml"), "")
+	unknown := "not published"
 	if runtime.GOOS == "windows" {
+		unknown = "isn't a tool home-sync installs"
 		programFiles := t.TempDir()
 		t.Setenv("ProgramFiles", programFiles)
+		record := filepath.Join(t.TempDir(), "tools.json")
+		oldRecord := homeSyncTools
+		homeSyncTools = record
+		defer func() { homeSyncTools = oldRecord }()
+		if _, err := expandArg("tool:spt"); err == nil || !strings.Contains(err.Error(), "home-sync tools") {
+			t.Fatalf("no home-sync list: %v", err)
+		}
+		write(record, `[
+			{"tool": "spt", "repo": "romaine-life/spotify-player", "tag": "v2", "entry": "spotify_player.exe"},
+			{"tool": "guitar-tabs", "repo": "romaine-life/guitar-tabs", "tag": "v2", "entry": "guitar-tabs.exe"},
+			{"tool": "brand-new-app", "repo": "romaine-life/brand-new-app", "tag": "v0.1.0", "entry": "brand-new-app.exe"},
+			{"tool": "older-home-sync", "repo": "romaine-life/older", "tag": "v1"}
+		]`)
+
+		// A tool this code has never heard of runs from home-sync's list alone, so no
+		// list of tools in fzt-automate can come back (HOMECFG-213).
+		newApp := filepath.Join(programFiles, "at-home", "brand-new-app", "current", "brand-new-app.exe")
+		write(newApp, "managed")
+		if got, err := expandArg("tool:brand-new-app"); err != nil || got != newApp {
+			t.Fatalf("tool:brand-new-app = %q %v", got, err)
+		}
+		if _, err := expandArg("tool:older-home-sync"); err == nil || !strings.Contains(err.Error(), "home-sync tools") {
+			t.Fatalf("a list from before home-sync named programs: %v", err)
+		}
+
 		write(filepath.Join(nas, "guitar-tabs", "current.json"), `{"version":"v2","entry":"guitar-tabs.exe"}`)
 		write(filepath.Join(nas, "guitar-tabs", "v2", "guitar-tabs.exe"), "stale")
 		write(filepath.Join(local, "guitar-tabs", "v2", "guitar-tabs.exe"), "stale")
@@ -86,8 +113,8 @@ func TestToolPaths(t *testing.T) {
 	if got, err := expandArg("tool-config:spt"); err != nil || got != filepath.Join(nas, "spt", "config") {
 		t.Fatalf("tool-config:spt = %q %v", got, err)
 	}
-	if _, err := expandArg("tool:nothing"); err == nil || !strings.Contains(err.Error(), "not published") {
-		t.Fatalf("an unpublished tool: %v", err)
+	if _, err := expandArg("tool:nothing"); err == nil || !strings.Contains(err.Error(), unknown) {
+		t.Fatalf("an unknown tool: %v", err)
 	}
 }
 
