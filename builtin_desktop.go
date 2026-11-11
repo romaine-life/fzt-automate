@@ -14,8 +14,9 @@ import (
 func init() {
 	register(&builtin{name: "windows", about: "folder: every open window, on every virtual desktop, most recent first", rows: windowRows})
 	register(&builtin{name: "focus", usage: "<window>", about: "switch to a window the windows folder listed", run: runFocus})
-	register(&builtin{name: "programs", about: "folder: every program in the Start menu", rows: programRows})
-	register(&builtin{name: "launch", usage: "<name> <appid>", about: "switch to a Start-menu program's window, or open it", run: runLaunch})
+	register(&builtin{name: "programs", about: "folder: every program in Windows' installed-apps list", rows: programRows})
+	register(&builtin{name: "installed-app", usage: "<name> <appid>", about: "switch to an app from Windows' installed-apps list, or open it (the programs folder's rows)", run: runInstalledApp})
+	register(&builtin{name: "launch", usage: "<name> <program> [arguments...]", about: "switch to a program's window, or start it: a tool:, a path or a link", run: runLaunch})
 }
 
 // uniqueNames numbers repeats ("Notepad (2)"): fzt returns the picked name, so
@@ -95,19 +96,63 @@ func programRows(context.Context, []string) ([]folderRow, error) {
 	var rows []folderRow
 	for _, a := range apps {
 		if isProgram(a) {
-			rows = append(rows, folderRow{name: unique(a.name), action: joinArgs("launch", a.name, a.appID)})
+			rows = append(rows, folderRow{name: unique(a.name), action: joinArgs("installed-app", a.name, a.appID)})
 		}
 	}
 	return rows, nil
 }
 
-// runLaunch switches to the program's newest window, or opens it. The surest
-// match first: many desktop apps give their windows no AppID, and some run
-// under another program than the Start menu starts (Steam, Discord), so the
-// last tries are the program's own description and the window title.
+// runLaunch switches to the program's newest window, or starts it with its
+// arguments and returns at once, so a desktop app holds no tab and the menu
+// isn't left waiting for it to close. The program is a path (tool: words
+// arrive resolved) or a link such as steam://. Some programs run under another
+// than the one started (Discord's updater, a Steam game), so a window also
+// matches by its title or its program's own description.
 func runLaunch(_ context.Context, _ io.Writer, args []string) (string, error) {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return "", usageError(builtins["launch"])
+	}
+	name, program := args[0], args[1]
+	ws, err := listWindows()
+	if err != nil {
+		return "", err
+	}
+	if w := windowFor(ws, name, []string{program, finalPath(program)}, fileDescription); w != nil {
+		if !focusWindow(w.handle) {
+			return "", fmt.Errorf("%s is open, but Windows refused to switch to it", name)
+		}
+		return "", nil
+	}
+	if err := startProgram(program, args[2:]); err != nil {
+		return "", fmt.Errorf("%s didn't start: %w", name, err)
+	}
+	return "started " + name, nil
+}
+
+// windowFor is the newest window of a program: one its own process shows, else
+// one titled name, or whose program describes itself as name. paths are the
+// program as given and as Windows names it once folder links are followed (a
+// home-sync tool's current folder is a link to its release's folder).
+func windowFor(ws []desktopWindow, name string, paths []string, describe func(string) string) *desktopWindow {
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			continue
+		}
+		if w := findWindow(ws, func(w desktopWindow) bool { return strings.EqualFold(w.processPath, p) }); w != nil {
+			return w
+		}
+	}
+	return findWindow(ws, func(w desktopWindow) bool {
+		return w.title == name || (w.processPath != "" && describe(w.processPath) == name)
+	})
+}
+
+// runInstalledApp switches to an app from Windows' installed-apps list, or
+// opens it. Only the programs folder, which lists those apps, uses it. The
+// surest match first: many desktop apps give their windows no AppID.
+func runInstalledApp(_ context.Context, _ io.Writer, args []string) (string, error) {
+	if len(args) != 2 {
+		return "", usageError(builtins["installed-app"])
 	}
 	name, appID := args[0], args[1]
 	ws, err := listWindows()

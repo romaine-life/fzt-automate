@@ -28,6 +28,17 @@ The menu has no edit or save commands. It changes only through
 fzt-frontend's API, where a Claude session edits it: a save commits the menu
 and starts home-sync on every PC.
 
+A desktop program, one with its own window, opens with `launch <name> <program>
+[arguments...]`: it switches to the program's window if one is open, else starts
+it and returns at once, so it holds no tab and the menu isn't left waiting. The
+program is a `tool:` word, a path or a link (`steam://...`); a window matches by
+its program's path (through a tool's `current` folder link too), else by its
+title or its program's own description being `<name>`. Power Lines is
+`launch 'Power Lines' tool:mgba --script tool:power-lines/strings.lua -C
+savegamePath=power-lines tool:power-lines/power-lines.gba`. Windows' installed-apps
+list plays no part, except in the `programs` folder, which lists that list; its
+rows open through `installed-app`.
+
 Failed menu launches and commands are saved as JSON lines under
 `~/.fzt-automate/failures/` on Windows, or `failures/` in the platform's config
 directory elsewhere (`FZT_CONFIG_DIR` overrides it). Each record includes the

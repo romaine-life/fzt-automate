@@ -373,8 +373,59 @@ func fileDescription(path string) string {
 	return windows.UTF16PtrToString(text)
 }
 
-// openApp starts a Start-menu program by its AppID, through the shell's
-// AppsFolder as the Start menu does.
+// startProgram starts a program with its arguments, or opens a link, and
+// doesn't wait for it: the shell starts it as a double-click would, in the
+// program's own folder.
+func startProgram(program string, args []string) error {
+	var params, dir *uint16
+	if len(args) > 0 {
+		params = windows.StringToUTF16Ptr(commandLine(args))
+	}
+	if filepath.IsAbs(program) {
+		dir = windows.StringToUTF16Ptr(filepath.Dir(program))
+	}
+	return windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr(program), params, dir, windows.SW_SHOWNORMAL)
+}
+
+// finalPath is the path Windows reports for a running program's file: folder
+// links followed. Go's filepath.EvalSymlinks no longer follows junctions, so
+// the file is opened and Windows is asked. Anything that can't be read stays
+// as given.
+func finalPath(path string) string {
+	if !filepath.IsAbs(path) {
+		return path
+	}
+	h, err := windows.CreateFile(windows.StringToUTF16Ptr(path), 0,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
+		windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		return path
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n, err := windows.GetFinalPathNameByHandle(h, &buf[0], uint32(len(buf)), 0)
+	if err != nil || n == 0 || int(n) > len(buf) {
+		return path
+	}
+	final := windows.UTF16ToString(buf[:n])
+	if strings.HasPrefix(final, `\\?\UNC\`) {
+		return `\\` + final[len(`\\?\UNC\`):]
+	}
+	return strings.TrimPrefix(final, `\\?\`)
+}
+
+// commandLine joins arguments the way a program's command-line parser splits
+// them again.
+func commandLine(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = windows.EscapeArg(a)
+	}
+	return strings.Join(quoted, " ")
+}
+
+// openApp starts an app from Windows' installed-apps list by its AppID,
+// through the shell's AppsFolder.
 func openApp(appID string) error {
 	target := `shell:AppsFolder\` + appID
 	return windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr(target), nil, nil, windows.SW_SHOWNORMAL)

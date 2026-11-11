@@ -29,3 +29,5 @@ func startApps() ([]startApp, error)        { return nil, errWindowsOnly }
 func appIDPath(string) string               { return "" }
 func fileDescription(string) string         { return "" }
 func openApp(string) error                  { return errWindowsOnly }
+func startProgram(string, []string) error   { return errWindowsOnly }
+func finalPath(path string) string          { return path }
