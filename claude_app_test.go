@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,26 +12,25 @@ import (
 	"testing"
 )
 
+// setClaudeApp makes tmux's @claude-app read as app for one test.
+func setClaudeApp(t *testing.T, app string, err error) {
+	old := claudeAppSetting
+	claudeAppSetting = func() (string, error) { return app, err }
+	t.Cleanup(func() { claudeAppSetting = old })
+}
+
 func TestReadClaudeApp(t *testing.T) {
-	dir := t.TempDir()
-	write := func(body string) string {
-		file := filepath.Join(dir, "state.json")
-		if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return file
-	}
-	if app, err := readClaudeApp(write(`{"claudeApp": "at-claude", "tools": {}}`)); err != nil || app != "at-claude" {
+	setClaudeApp(t, "at-claude", nil)
+	if app, err := readClaudeApp(); err != nil || app != "at-claude" {
 		t.Errorf("readClaudeApp = %q, %v", app, err)
 	}
-	if _, err := readClaudeApp(write(`{"tools": {}}`)); err == nil || !strings.Contains(err.Error(), "doesn't say which Claude app") {
-		t.Errorf("no claudeApp: %v", err)
+	setClaudeApp(t, "", nil)
+	if _, err := readClaudeApp(); err == nil || !strings.Contains(err.Error(), "doesn't say which Claude app") {
+		t.Errorf("no @claude-app: %v", err)
 	}
-	if _, err := readClaudeApp(write(`{`)); err == nil {
-		t.Error("unreadable state.json accepted")
-	}
-	if _, err := readClaudeApp(filepath.Join(dir, "missing.json")); err == nil {
-		t.Error("missing state.json accepted")
+	setClaudeApp(t, "", errors.New("no server"))
+	if _, err := readClaudeApp(); err == nil || !strings.Contains(err.Error(), "no server") {
+		t.Errorf("tmux failed: %v", err)
 	}
 }
 
@@ -86,16 +86,10 @@ func TestClaudeArgv(t *testing.T) {
 	}
 }
 
-// Every Claude launcher reads state.json before it does anything else, so a
-// missing claudeApp stops it with the reason rather than starting a default.
+// Every Claude launcher reads @claude-app before it does anything else, so an
+// unset one stops it with the reason rather than starting a default.
 func TestLaunchersReadClaudeApp(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "state.json")
-	if err := os.WriteFile(file, []byte(`{}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	old := homeState
-	homeState = file
-	defer func() { homeState = old }()
+	setClaudeApp(t, "", nil)
 	t.Setenv("TMUX_PANE", "%1")
 	if err := startClaude(t.TempDir(), "abc", true); err == nil || !strings.Contains(err.Error(), "doesn't say which Claude app") {
 		t.Errorf("startClaude: %v", err)

@@ -1,12 +1,11 @@
 package main
 
 // Every Claude launcher (launch-claude, work-on-app claude, resume-claude) starts
-// the app home-sync's machine/state.json names as claudeApp: at-claude, the
-// terminal harness, or Claude Code itself (ATC-6). It is read at each launch, so
-// a change to state.json takes effect at the next one.
+// the app tmux's @claude-app names: at-claude, the terminal harness, or Claude Code
+// itself (ATC-6, ATC-7). It is read at each launch, so a change to the setting takes
+// effect at the next one.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,22 +17,25 @@ const (
 	appClaudeCode = "claude-code"
 )
 
-// readClaudeApp gives state.json's claudeApp.
-func readClaudeApp(file string) (string, error) {
-	data, err := os.ReadFile(file)
+// claudeAppSetting gives tmux's @claude-app, empty when it isn't set.
+var claudeAppSetting = func() (string, error) {
+	out, err := exec.Command("tmux", "show", "-gqv", "@claude-app").Output()
 	if err != nil {
-		return "", fmt.Errorf("can't read which Claude app to start: %w", err)
+		return "", fmt.Errorf("can't ask tmux which Claude app to start: %w", err)
 	}
-	var state struct {
-		ClaudeApp string `json:"claudeApp"`
+	return strings.TrimSpace(string(out)), nil
+}
+
+// readClaudeApp gives tmux's @claude-app.
+func readClaudeApp() (string, error) {
+	app, err := claudeAppSetting()
+	if err != nil {
+		return "", err
 	}
-	if err := json.Unmarshal(data, &state); err != nil {
-		return "", fmt.Errorf("can't read %s: %w", file, err)
+	if app == "" {
+		return "", fmt.Errorf("tmux's @claude-app doesn't say which Claude app to start: it is %s or %s", appAtClaude, appClaudeCode)
 	}
-	if state.ClaudeApp == "" {
-		return "", fmt.Errorf("%s doesn't say which Claude app to start: claudeApp is %s or %s", file, appAtClaude, appClaudeCode)
-	}
-	return state.ClaudeApp, nil
+	return app, nil
 }
 
 // claudeArgv is the program and arguments that start app, continuing sessionID
@@ -63,13 +65,13 @@ func claudeArgv(app, sessionID string, chrome bool) ([]string, error) {
 		}
 		return argv, nil
 	}
-	return nil, fmt.Errorf("claudeApp in state.json is %q: it can be %s or %s", app, appAtClaude, appClaudeCode)
+	return nil, fmt.Errorf("tmux's @claude-app is %q: it can be %s or %s", app, appAtClaude, appClaudeCode)
 }
 
-// startClaude has tmux restart this pane in dir as the Claude app state.json
+// startClaude has tmux restart this pane in dir as the Claude app @claude-app
 // names, continuing sessionID when it is set.
 func startClaude(dir, sessionID string, chrome bool) error {
-	app, err := readClaudeApp(homeState)
+	app, err := readClaudeApp()
 	if err != nil {
 		return err
 	}
