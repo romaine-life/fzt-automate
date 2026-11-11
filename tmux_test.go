@@ -27,7 +27,7 @@ func TestGraftTmuxBuildsTheFolder(t *testing.T) {
 	items := graftTmux(menu, rows)
 
 	folder := items[1]
-	if folder.Fields[0] != "tmux" || !folder.HasChildren || !folder.Injected || folder.Depth != 0 {
+	if folder.Fields[0] != "tmux" || !folder.HasChildren || !folder.Injected || folder.Depth != 0 || !folder.TagDefault {
 		t.Fatalf("tmux folder = %+v", folder)
 	}
 	var names []string
@@ -112,5 +112,35 @@ func TestEnterOnATmuxRowPicksIt(t *testing.T) {
 	}
 	if _, action := enter("reopen-tab"); !strings.HasPrefix(action, "select:") {
 		t.Fatalf("Enter on reopen-tab: action %q, want it selected", action)
+	}
+}
+
+// Inside the tmux folder, where Ctrl+B opens the menu, a query searches by
+// tag with tag mode off: "pane" resolves to split-window's tag. At the root the
+// same query is a name search (TMUX-196).
+func TestTmuxFolderSearchesByTag(t *testing.T) {
+	search := func(inside bool) *core.TreeContext {
+		rows, _ := readTmuxRows(strings.NewReader(paletteRows))
+		menu := []core.Item{{Fields: []string{"lights"}, ParentIdx: -1, PropertyOf: -1}}
+		cfg := core.Config{Layout: "reverse", HidePalette: true, TreeMode: true, Tiered: true, DepthPenalty: 5, AcceptNth: []int{1}}
+		s, searchCols := core.NewState(graftTmux(menu, rows), cfg)
+		ctx := s.TopCtx()
+		ctx.TreeExpanded = make(map[int]bool)
+		ctx.QueryExpanded = make(map[int]bool)
+		ctx.TreeCursor = -1
+		if inside && !core.EnterFolder(s, []string{"tmux"}, cfg, searchCols) {
+			t.Fatal("no tmux folder to enter")
+		}
+		for _, ch := range "pane" {
+			core.HandleUnifiedKeyResult(s, tcell.KeyRune, ch, false, cfg, searchCols)
+		}
+		return s.TopCtx()
+	}
+	ctx := search(true)
+	if !core.TagSearchActive(ctx) || ctx.TagTerms[0].Tag != "pane" || len(ctx.Filtered) != 1 || ctx.Filtered[0].Fields[0] != "split-window" {
+		t.Fatalf("inside the tmux folder, pane: tag terms %v, %d results; want the tag pane and split-window", ctx.TagTerms, len(ctx.Filtered))
+	}
+	if ctx := search(false); core.TagSearchActive(ctx) {
+		t.Fatalf("at the root, pane searched by tag with tag mode off: %v", ctx.TagTerms)
 	}
 }

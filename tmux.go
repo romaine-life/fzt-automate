@@ -50,6 +50,7 @@ func readTmuxRows(r io.Reader) ([]string, error) {
 
 // graftTmux appends tmux's rows to the menu as its tmux folder. The rows are
 // built by tmux on each press, so the folder is never saved to the cloud menu.
+// Inside it, search goes by tag (core.TagSearchOn).
 func graftTmux(items []core.Item, rows []string) []core.Item {
 	if len(rows) == 0 {
 		return items
@@ -62,6 +63,8 @@ func graftTmux(items []core.Item, rows []string) []core.Item {
 		Path:        tmuxFolder,
 		PropertyOf:  -1,
 		Injected:    true,
+		// Searched by tag inside, with tag mode off elsewhere (TMUX-196).
+		TagDefault: true,
 	})
 	stack := []int{folder} // stack[d] is the parent of a row at depth d
 	for _, line := range rows {
