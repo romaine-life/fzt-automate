@@ -15,8 +15,8 @@
 //	fzt-automate
 //	fzt-automate --title "What would you like to do?"
 //	fzt-automate --sync    # pull the menu into the cache, without the picker (renews the token from the TPM key if needed)
-//	fzt-automate --run     # the menu as a tab's program (Ctrl+T Ctrl+A): runs
-//	                       # its pick itself, the not-yet-moved scripts too
+//	fzt-automate --run     # the menu as a tab's program (Ctrl+T Ctrl+A): in tmux
+//	                       # the tab becomes its pick, the not-yet-moved scripts too
 //	fzt-automate --popup --window @3 --client /dev/pty0 [--open tmux] < rows
 //	                       # the popup at over a tab, run by tmux's display-palette
 //	                       # with its rows on stdin: runs picks itself (popup.go)
@@ -264,6 +264,12 @@ func runHere(line string, scripts bool) (int, bool) {
 		fmt.Fprintln(os.Stderr, logFailure("", line, "", fmt.Sprintf("fzt-automate: %v", err)))
 		return 1, true
 	}
+	if s.app != "" && os.Getenv("TMUX") != "" {
+		return openAppHere(line, s), true
+	}
+	if pane := os.Getenv("TMUX_PANE"); scripts && pane != "" {
+		return becomePick(line, pane, s), true
+	}
 	var cmd *exec.Cmd
 	switch s.kind {
 	case stepBuiltin:
@@ -275,9 +281,6 @@ func runHere(line string, scripts bool) (int, bool) {
 		cmd = scriptCommand(s.line)
 		cmd.Env = append(os.Environ(), "AT_PICK=1")
 	case stepProgram:
-		if s.app != "" && os.Getenv("TMUX") != "" {
-			return openAppHere(line, s), true
-		}
 		if cmd, err = programCommand(s.args); err != nil {
 			fmt.Fprintln(os.Stderr, logFailure("", line, "", fmt.Sprintf("fzt-automate: %v", err)))
 			return 1, true
@@ -321,6 +324,48 @@ func openAppHere(line string, s step) int {
 		return fail(err)
 	}
 	return 0
+}
+
+// becomePick has tmux restart the --run tab's pane as the pick, started as the
+// popup's takeover starts one in a new tab, and the menu ends. The pane's start
+// command is then the pick's, so reload-app and a session-set restore bring back
+// the pick, not the menu.
+func becomePick(line, pane string, s step) int {
+	dir, _ := os.Getwd()
+	fail := func(err error) int {
+		fmt.Fprintln(os.Stderr, logFailure("", line, dir, fmt.Sprintf("fzt-automate: %v", err)))
+		return 1
+	}
+	if s.kind == stepProgram {
+		if _, err := programCommand(s.args); err != nil {
+			return fail(err)
+		}
+	}
+	if out, err := exec.Command("tmux", respawnPickArgs(pane, dir, s)...).CombinedOutput(); err != nil {
+		if text := strings.TrimSpace(string(out)); text != "" {
+			return fail(errors.New(text))
+		}
+		return fail(err)
+	}
+	return 0
+}
+
+// respawnPickArgs builds the tmux command that restarts pane as the pick in
+// dir. An at command not yet moved gets what its takeover tab gets: AT_PICK,
+// and the mark that brings it back from a restore as a shell.
+func respawnPickArgs(pane, dir string, s step) []string {
+	var args []string
+	if s.kind == stepScript {
+		args = []string{"set-option", "-p", "-t", pane, "@session-set-shell", "1", ";"}
+	}
+	args = append(args, "respawn-pane", "-k", "-t", pane)
+	if dir != "" {
+		args = append(args, "-c", dir)
+	}
+	if s.kind == stepScript {
+		args = append(args, "-e", "AT_PICK=1")
+	}
+	return append(args, tmuxProgram(takeoverProgram(s))...)
 }
 
 // pickLine is the line the at wrapper runs for a pick: the picked item's
