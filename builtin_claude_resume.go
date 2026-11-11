@@ -4,8 +4,10 @@ package main
 // by its name: the one Nelson gave it (claude -n, /rename), else the window name
 // at-home-tools' claude-pane gave it from the first prompt
 // (~/.local/state/claude-title/<session id>), else Claude's generated title.
-// The pick restarts this tab as `claude --resume <id>` in the session's folder,
-// as launch-claude does. claude-search is the other half: full-text search of
+// The pick restarts this tab as the Claude app state.json names, continuing the
+// session in its folder, as launch-claude does. Given a session id, it resumes
+// that one in this tab's folder, as tmux's session restore, reopen-window and
+// claude-relaunch-with-chrome do. claude-search is the other half: full-text search of
 // every PC's archive, opened for reading.
 
 import (
@@ -17,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -30,8 +31,8 @@ import (
 )
 
 func init() {
-	register(&builtin{name: "resume-claude", terminal: true,
-		about: "pick a past Claude session on this PC by its name, then resume it in this tab", run: runResumeClaude})
+	register(&builtin{name: "resume-claude", usage: "[<session id> [--chrome]]", terminal: true,
+		about: "pick a past Claude session on this PC by its name, or name one, then resume it in this tab", run: runResumeClaude})
 }
 
 type claudeSession struct {
@@ -211,7 +212,15 @@ func ago(t, now time.Time) string {
 }
 
 func runResumeClaude(ctx context.Context, out io.Writer, args []string) (string, error) {
-	if len(args) != 0 {
+	switch {
+	case len(args) == 0:
+	case !strings.HasPrefix(args[0], "-") && (len(args) == 1 || len(args) == 2 && args[1] == "--chrome"):
+		dir, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		return "", startClaude(dir, args[0], len(args) == 2)
+	default:
 		return "", usageError(builtins["resume-claude"])
 	}
 	home := claudeHome()
@@ -249,13 +258,5 @@ func runResumeClaude(ctx context.Context, out io.Writer, args []string) (string,
 	if fi, err := os.Stat(s.folder); err != nil || !fi.IsDir() {
 		return "", fmt.Errorf("%s's folder %s is gone, so Claude can't resume it there", s.name, s.folder)
 	}
-	pane := os.Getenv("TMUX_PANE")
-	if pane == "" {
-		return "", errors.New("not in a tmux pane: run it from the at menu")
-	}
-	tmuxArgs := append([]string{"respawn-pane", "-k", "-t", pane, "-c", s.folder}, tmuxProgram([]string{"claude", "--resume", s.id})...)
-	if msg, err := exec.Command("tmux", tmuxArgs...).CombinedOutput(); err != nil {
-		return "", fmt.Errorf("tmux couldn't start claude: %s", strings.TrimSpace(string(msg)))
-	}
-	return "", nil
+	return "", startClaude(s.folder, s.id, false)
 }

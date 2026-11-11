@@ -23,8 +23,10 @@ const (
 	originWindowEnv = "AT_ORIGIN_WINDOW"
 	reposRoot       = `D:\repos`
 	forgejoBase     = "https://forgejo.romaine.life/"
-	homeState       = `\\NelsonNAS\files\shell-config-profile-home\machine\state.json`
 )
+
+// homeState is home-sync's machine/state.json, read live from the NAS.
+var homeState = `\\NelsonNAS\files\shell-config-profile-home\machine\state.json`
 
 func init() {
 	register(&builtin{name: "work-on-app", usage: "claude|codex", terminal: true,
@@ -201,7 +203,7 @@ func runWorkOnApp(ctx context.Context, out io.Writer, args []string) (string, er
 		return "", err
 	}
 	if agent == "claude" {
-		return "", startClaude(dir)
+		return "", startClaude(dir, "", false)
 	}
 	program, err := codexProgram()
 	if err != nil {

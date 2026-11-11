@@ -17,7 +17,8 @@ func init() {
 	register(&builtin{name: "show", usage: "<program> [arguments]", terminal: true,
 		about: "run a program in its own tab and keep its output there until Enter", run: runShow})
 	register(&builtin{name: "explore", terminal: true, about: "pick a folder, then open it in Explorer", run: runExplore})
-	register(&builtin{name: "launch-claude", terminal: true, about: "pick a folder, then start Claude Code there in this tab", run: runLaunchClaude})
+	register(&builtin{name: "launch-claude", usage: "[start-folder]", terminal: true,
+		about: "pick a folder, then start the Claude app state.json names there in this tab", run: runLaunchClaude})
 	register(&builtin{name: "launch-at-claude", usage: "[start-folder]", terminal: true,
 		about: "pick a folder, then start at-claude there in this tab", run: runLaunchAtClaude})
 	register(&builtin{name: "launch-opencode", usage: "[start-folder]", terminal: true,
@@ -96,9 +97,9 @@ func runExplore(ctx context.Context, out io.Writer, args []string) (string, erro
 	return "", nil
 }
 
-// runLaunchClaude starts Claude Code in the folder picked, in this tab:
-// tmux restarts the pane with claude in place of this program, so the tab
-// is Claude's and closes with it.
+// runLaunchClaude starts the Claude app in the folder picked, in this tab:
+// tmux restarts the pane with it in place of this program, so the tab is
+// Claude's and closes with it.
 func runLaunchClaude(ctx context.Context, out io.Writer, args []string) (string, error) {
 	start := `D:\repos`
 	if len(args) == 1 {
@@ -108,7 +109,7 @@ func runLaunchClaude(ctx context.Context, out io.Writer, args []string) (string,
 	if err != nil || dir == "" {
 		return "", err
 	}
-	return "", startClaude(dir)
+	return "", startClaude(dir, "", false)
 }
 
 // runLaunchAtClaude is launch-claude for at-claude, the terminal harness: the
@@ -132,26 +133,7 @@ func runLaunchAtClaude(ctx context.Context, out io.Writer, args []string) (strin
 	if err != nil || dir == "" {
 		return "", err
 	}
-	return "", respawnAs(dir, "at-claude", program)
-}
-
-// startClaude has tmux restart this pane as Claude Code in dir.
-func startClaude(dir string) error {
-	return respawnAs(dir, "claude", "claude")
-}
-
-// respawnAs has tmux restart this pane as program in dir, so the tab is the
-// program's and closes with it; name is how an error refers to it.
-func respawnAs(dir, name, program string) error {
-	pane := os.Getenv("TMUX_PANE")
-	if pane == "" {
-		return errors.New("not in a tmux pane: run it from the at menu")
-	}
-	tmuxArgs := append([]string{"respawn-pane", "-k", "-t", pane, "-c", dir}, tmuxProgram([]string{program})...)
-	if msg, err := exec.Command("tmux", tmuxArgs...).CombinedOutput(); err != nil {
-		return fmt.Errorf("tmux couldn't start %s: %s", name, strings.TrimSpace(string(msg)))
-	}
-	return nil
+	return "", respawnAs(dir, "at-claude", []string{program})
 }
 
 func ollamaRunningRows(ctx context.Context, args []string) ([]folderRow, error) {

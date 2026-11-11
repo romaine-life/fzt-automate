@@ -58,6 +58,15 @@ the package's executable directly, bypassing npm's command shim. Missing install
 or API logins report an error before the picker; a failed launch keeps its tab.
 `launch-claude` and its subscription billing remain the default.
 
+The Claude launchers start the app `machine/state.json` names as `claudeApp`:
+`at-claude`, the terminal harness, or `claude-code`, Claude Code itself (ATC-6). It is
+read at each launch, so a change there takes effect at the next one; a missing or
+unknown value stops the launch and says so. `launch-claude [start-folder]` picks a
+folder and replaces its tmux pane with that app. `resume-claude` picks a past session
+by its name and resumes it in its folder; `resume-claude <session id> [--chrome]`
+resumes that one in this pane's folder, with Claude in Chrome connected when asked,
+for tmux's session restore, reopen-window and `claude-relaunch-with-chrome`.
+
 `launch-at-claude [start-folder]` picks a folder the same way and replaces its tmux
 pane with at-claude, the terminal harness, from home-sync's install; the picker
 opens at `D:\repos` unless a start folder is given.
