@@ -67,10 +67,6 @@ by its name and resumes it in its folder; `resume-claude <session id> [--chrome]
 resumes that one in this pane's folder, with Claude in Chrome connected when asked,
 for tmux's session restore, reopen-window and `claude-relaunch-with-chrome`.
 
-`launch-at-claude [start-folder]` picks a folder the same way and replaces its tmux
-pane with at-claude, the terminal harness, from home-sync's install; the picker
-opens at `D:\repos` unless a start folder is given.
-
 `work-on-app claude|codex` opens a new tab running that agent in the repo of the app
 in the tab you came from, so you don't need to remember which repo holds it. It
 reads what the pane runs (below its own process first, so an app the at menu

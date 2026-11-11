@@ -19,8 +19,6 @@ func init() {
 	register(&builtin{name: "explore", terminal: true, about: "pick a folder, then open it in Explorer", run: runExplore})
 	register(&builtin{name: "launch-claude", usage: "[start-folder]", terminal: true,
 		about: "pick a folder, then start the Claude app state.json names there in this tab", run: runLaunchClaude})
-	register(&builtin{name: "launch-at-claude", usage: "[start-folder]", terminal: true,
-		about: "pick a folder, then start at-claude there in this tab", run: runLaunchAtClaude})
 	register(&builtin{name: "launch-opencode", usage: "[start-folder]", terminal: true,
 		about: "pick a folder, then start OpenCode with the Anthropic API key in this tab", run: runLaunchOpenCode})
 	register(&builtin{name: "ollama-running", about: "folder: the ollama models running now; picking one stops it", rows: ollamaRunningRows})
@@ -101,6 +99,12 @@ func runExplore(ctx context.Context, out io.Writer, args []string) (string, erro
 // tmux restarts the pane with it in place of this program, so the tab is
 // Claude's and closes with it.
 func runLaunchClaude(ctx context.Context, out io.Writer, args []string) (string, error) {
+	if len(args) > 1 {
+		return "", usageError(builtins["launch-claude"])
+	}
+	if os.Getenv("TMUX_PANE") == "" {
+		return "", errors.New("not in a tmux pane: run it from the at menu")
+	}
 	start := `D:\repos`
 	if len(args) == 1 {
 		start = args[0]
@@ -110,30 +114,6 @@ func runLaunchClaude(ctx context.Context, out io.Writer, args []string) (string,
 		return "", err
 	}
 	return "", startClaude(dir, "", false)
-}
-
-// runLaunchAtClaude is launch-claude for at-claude, the terminal harness: the
-// folder picked, then this pane restarted as at-claude there.
-func runLaunchAtClaude(ctx context.Context, out io.Writer, args []string) (string, error) {
-	if len(args) > 1 {
-		return "", usageError(builtins["launch-at-claude"])
-	}
-	if os.Getenv("TMUX_PANE") == "" {
-		return "", errors.New("not in a tmux pane: run it from the at menu")
-	}
-	program, err := toolPath("at-claude", "")
-	if err != nil {
-		return "", err
-	}
-	start := `D:\repos`
-	if len(args) == 1 {
-		start = args[0]
-	}
-	dir, err := pickFolder(ctx, "--title", "Launch at-claude in", "--start-dir", start)
-	if err != nil || dir == "" {
-		return "", err
-	}
-	return "", respawnAs(dir, "at-claude", []string{program})
 }
 
 func ollamaRunningRows(ctx context.Context, args []string) ([]folderRow, error) {
