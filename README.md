@@ -7,8 +7,9 @@ CI, signed builds, and releases run on
 [Forgejo](https://forgejo.romaine.life/romaine-life/fzt-automate/actions).
 Run `release.yml` on `main` to cut the next `v0.1.N` and build the Windows,
 Linux, and macOS binaries. The macOS binary is cross-compiled Go; no Mac
-runner is needed. Run `dispatch.yml` to update fzt and fzt-terminal through
-a checked pull request before releasing.
+runner is needed. `dispatch.yml` takes fzt and fzt-terminal up through a
+checked pull request; strip-owner starts it when it delivers a change to them,
+and starts `release.yml` once the take-up merges (PIPT-3).
 
 After the Forgejo release has all three assets, CI starts home-sync on every
 PC. It verifies the signed Windows binary and switches the managed installation
