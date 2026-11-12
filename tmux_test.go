@@ -144,3 +144,40 @@ func TestTmuxFolderSearchesByTag(t *testing.T) {
 		t.Fatalf("at the root, pane searched by tag with tag mode off: %v", ctx.TagTerms)
 	}
 }
+
+// --open tmux/nav/window --row 2 opens the popup inside the nav folder's
+// window list, on its second window, and Enter picks that one (TMUX-202).
+func TestOpenAtANestedFolderAndRow(t *testing.T) {
+	const navRows = "0\tnav\tGo to a window or session\t\t0\n" +
+		"1\twindow\t\t\t1\n" +
+		"2\tw1\t\t\t2\n" +
+		"2\tw2\t\t\t3\n" +
+		"2\tw3\t\t\t4\n" +
+		"1\tsession\t\t\t5\n" +
+		"2\ts1\t\t\t6\n"
+	if path, row := startAt("", 2); path != nil || row != 0 {
+		t.Fatalf("startAt with no folder = %v, %d; want nothing", path, row)
+	}
+	rows, _ := readTmuxRows(strings.NewReader(navRows))
+	cfg := core.Config{Layout: "reverse", HidePalette: true, TreeMode: true, Tiered: true, DepthPenalty: 5, AcceptNth: []int{1}}
+	cfg.StartFolder, cfg.StartRow = startAt("tmux/nav/window", 2)
+	s, searchCols := core.NewState(graftTmux(nil, rows), cfg)
+	ctx := s.TopCtx()
+	ctx.TreeExpanded = make(map[int]bool)
+	ctx.QueryExpanded = make(map[int]bool)
+	ctx.TreeCursor = -1
+	if !core.EnterFolder(s, cfg.StartFolder, cfg, searchCols) {
+		t.Fatalf("no folder %v", cfg.StartFolder)
+	}
+	visible := core.TreeVisibleItems(s)
+	if ctx.TreeCursor < 0 || visible[ctx.TreeCursor].Item.Fields[0] != "w2" {
+		t.Fatalf("cursor at %d, want on w2", ctx.TreeCursor)
+	}
+	r := core.HandleUnifiedKeyResult(s, tcell.KeyEnter, 0, false, cfg, searchCols)
+	if action := tui.ProcessAction(s, r.Action); !strings.HasPrefix(action, "select:") {
+		t.Fatalf("Enter on w2: action %q, want it picked", action)
+	}
+	if got := tmuxPick(visible[ctx.TreeCursor].Item, "", false); got != "3" {
+		t.Fatalf("w2 goes back to tmux as %q, want its id 3", got)
+	}
+}
