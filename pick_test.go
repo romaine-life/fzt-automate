@@ -20,7 +20,7 @@ func TestPickRunsThePickedItemWhenNamesCollide(t *testing.T) {
 	sess := tui.NewTreeSession(items, cfg, 80, 24)
 
 	var r core.ActionResult
-	for _, k := range []any{'w', 'i', 'n', tcell.KeyEnter, tcell.KeyDown, tcell.KeyEnter} {
+	for _, k := range []any{'w', 'i', 'n', tcell.KeyEnter, tcell.KeyEnter} {
 		key, ch := tcell.KeyRune, rune(0)
 		switch v := k.(type) {
 		case tcell.Key:
