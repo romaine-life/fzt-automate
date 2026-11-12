@@ -15,7 +15,7 @@ import (
 
 func init() {
 	register(&builtin{name: "launch-codex", usage: "[start-folder]", terminal: true,
-		about: "pick a folder, then start Codex in this window", run: runLaunchCodex})
+		about: "pick a repo from Forgejo (or a folder), then start Codex in this window", run: runLaunchCodex})
 	register(&builtin{name: "resume-codex", terminal: true,
 		about: "find and resume a past Codex session, across all folders", run: runResumeCodex})
 }
@@ -58,12 +58,9 @@ func runLaunchCodex(ctx context.Context, out io.Writer, args []string) (string, 
 	}
 	start := pickDir(ctx)
 	if start == "" {
-		start = `D:\repos`
+		start = reposRoot
 	}
-	if len(args) == 1 {
-		start = args[0]
-	}
-	dir, err := pickFolder(ctx, "--title", "Launch Codex in", "--start-dir", start)
+	dir, err := launchFolder(ctx, out, "Codex", start, args)
 	if err != nil || dir == "" {
 		return "", err
 	}
