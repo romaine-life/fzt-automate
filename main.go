@@ -61,6 +61,9 @@ func configDir() string {
 	return filepath.Join(os.Getenv("HOME"), ".config", "fzt-automate")
 }
 
+// shellOpenArg runs this program as the opener shellOpen starts (Windows).
+const shellOpenArg = "--shell-open"
+
 func main() {
 	if render.Version == "UNSET" {
 		fmt.Fprintln(os.Stderr, "fzt-automate: version not set — build with 'go run ./build' (not 'go build .')")
@@ -68,6 +71,9 @@ func main() {
 	}
 
 	if len(os.Args) > 1 {
+		if os.Args[1] == shellOpenArg {
+			os.Exit(shellOpenMain(os.Args[2:]))
+		}
 		if b, ok := builtins[os.Args[1]]; ok {
 			os.Exit(runSubcommand(b, os.Args[2:]))
 		}

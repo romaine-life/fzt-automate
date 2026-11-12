@@ -377,14 +377,14 @@ func fileDescription(path string) string {
 // doesn't wait for it: the shell starts it as a double-click would, in the
 // program's own folder.
 func startProgram(program string, args []string) error {
-	var params, dir *uint16
+	var params, dir string
 	if len(args) > 0 {
-		params = windows.StringToUTF16Ptr(commandLine(args))
+		params = commandLine(args)
 	}
 	if filepath.IsAbs(program) {
-		dir = windows.StringToUTF16Ptr(filepath.Dir(program))
+		dir = filepath.Dir(program)
 	}
-	return windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr(program), params, dir, windows.SW_SHOWNORMAL)
+	return shellOpen(program, params, dir)
 }
 
 // finalPath is the path Windows reports for a running program's file: folder
@@ -427,6 +427,5 @@ func commandLine(args []string) string {
 // openApp starts an app from Windows' installed-apps list by its AppID,
 // through the shell's AppsFolder.
 func openApp(appID string) error {
-	target := `shell:AppsFolder\` + appID
-	return windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr(target), nil, nil, windows.SW_SHOWNORMAL)
+	return shellOpen(`shell:AppsFolder\`+appID, "", "")
 }

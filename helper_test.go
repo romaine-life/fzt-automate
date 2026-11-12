@@ -26,6 +26,8 @@ func helper(args []string) int {
 		return 2
 	}
 	switch args[0] {
+	case shellOpenArg:
+		return shellOpenMain(args[1:])
 	case "failure-log":
 		fmt.Println(logFailure("", "test program", "test folder", args[1]))
 		return 0

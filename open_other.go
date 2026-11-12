@@ -3,6 +3,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 )
@@ -14,4 +16,9 @@ func openURL(target string) error {
 		opener = "open"
 	}
 	return exec.Command(opener, withScheme(target)).Start()
+}
+
+func shellOpenMain([]string) int {
+	fmt.Fprintln(os.Stderr, errWindowsOnly)
+	return 1
 }
