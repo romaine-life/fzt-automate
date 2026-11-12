@@ -44,7 +44,7 @@ jobs:
           Write-Output "::add-mask::$auth"
           $env:GIT_CONFIG_COUNT = '2'
           $env:GIT_CONFIG_KEY_0 = "url.$env:GITHUB_SERVER_URL/romaine-life/.insteadOf"
-          $env:GIT_CONFIG_VALUE_0 = 'https://github.com/romaine-life/'
+          $env:GIT_CONFIG_VALUE_0 = 'https://github.com/romaine-life/' # internet: git rewrite source, not a fetch
           $env:GIT_CONFIG_KEY_1 = "http.$env:GITHUB_SERVER_URL/.extraheader"
           $env:GIT_CONFIG_VALUE_1 = "Authorization: $auth"
           $env:GOPRIVATE = 'github.com/romaine-life/*'
