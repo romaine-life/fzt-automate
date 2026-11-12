@@ -197,10 +197,6 @@ func main() {
 			{Name: "sync", Description: "Sync menu from cloud", Action: "sync"},
 			{Name: "update", Description: "Update fzt-automate to latest release", Action: "update"},
 			{Name: "states", Description: "Toggle state inspector banner (suppresses action execution)", Action: "toggle-states"},
-			{Name: "shortcuts", Description: "Keyboard shortcuts", Children: []core.CommandItem{
-				{Name: "shift+enter", Description: "pick the item under the cursor"},
-				{Name: "shift+back", Description: "return to home"},
-			}},
 		},
 	}
 
