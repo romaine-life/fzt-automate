@@ -18,9 +18,9 @@ func init() {
 		about: "run a program in its own tab and keep its output there until Enter", run: runShow})
 	register(&builtin{name: "explore", terminal: true, about: "pick a folder, then open it in Explorer", run: runExplore})
 	register(&builtin{name: "launch-claude", usage: "[start-folder]", terminal: true,
-		about: "pick a folder, then start the Claude app state.json names there in this tab", run: runLaunchClaude})
+		about: "pick a repo from Forgejo (or a folder), then start the Claude app state.json names there in this tab", run: runLaunchClaude})
 	register(&builtin{name: "launch-opencode", usage: "[start-folder]", terminal: true,
-		about: "pick a folder, then start OpenCode with the Anthropic API key in this tab", run: runLaunchOpenCode})
+		about: "pick a repo from Forgejo (or a folder), then start OpenCode with the Anthropic API key in this tab", run: runLaunchOpenCode})
 	register(&builtin{name: "ollama-running", about: "folder: the ollama models running now; picking one stops it", rows: ollamaRunningRows})
 }
 
@@ -105,11 +105,7 @@ func runLaunchClaude(ctx context.Context, out io.Writer, args []string) (string,
 	if os.Getenv("TMUX_PANE") == "" {
 		return "", errors.New("not in a tmux pane: run it from the at menu")
 	}
-	start := `D:\repos`
-	if len(args) == 1 {
-		start = args[0]
-	}
-	dir, err := pickFolder(ctx, "--title", "Launch Claude in", "--start-dir", start)
+	dir, err := launchFolder(ctx, out, "Claude", reposRoot, args)
 	if err != nil || dir == "" {
 		return "", err
 	}

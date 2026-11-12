@@ -61,7 +61,7 @@ The window stays when the program ends, saying so, and Enter starts it again
 config's `system-session`. A system app runs a program, not a built-in or an at
 command still on PowerShell.
 
-`launch-opencode [start-folder]` picks a folder and replaces its tmux pane with
+`launch-opencode` picks a repo (below) and replaces its tmux pane with
 OpenCode, using the Anthropic API login in `~/.local/share/opencode/auth.json`
 (`XDG_DATA_HOME` overrides the data directory). Home-sync provisions the current
 `@opencode/cli` npm package, login and Claude model. On Windows the built-in starts
@@ -72,8 +72,8 @@ or API logins report an error before the picker; a failed launch keeps its tab.
 The Claude launchers start the app tmux's `@claude-app` names: `at-claude`, the
 terminal harness, or `claude-code`, Claude Code itself (ATC-6, ATC-7); the home
 profile's `tmux/windows.conf` sets it. It is read at each launch, so a change there
-takes effect at the next one; an unset or unknown value stops the launch and says so. `launch-claude [start-folder]` picks a
-folder and replaces its tmux pane with that app. `resume-claude` picks a past session
+takes effect at the next one; an unset or unknown value stops the launch and says so. `launch-claude` picks a
+repo (below) and replaces its tmux pane with that app. `resume-claude` picks a past session
 by its name and resumes it in its folder; `resume-claude <session id> [--chrome]`
 resumes that one in this pane's folder, with Claude in Chrome connected when asked,
 for tmux's session restore, reopen-window and `claude-relaunch-with-chrome`.
@@ -85,7 +85,7 @@ started isn't taken for fzt-automate), then `machine/state.json`: `tools` for wh
 installs, `appRepos` for the rest. A repo this PC hasn't cloned is cloned to
 `D:\repos`; a tab with no recognized app gets a folder picker that says so.
 
-`launch-codex [start-folder]` picks a folder and starts the native Codex executable
+`launch-codex` picks a repo (below) and starts the native Codex executable
 in the window, using the user's existing Codex login. `resume-codex` opens Codex's
 session picker across all folders. Both retain failed launches for inspection.
 Both use `--no-daemon` so Codex's lifecycle hooks inherit the launching tmux
@@ -93,3 +93,15 @@ pane's environment and can register the session and generate its window name.
 Already-running sessions retain their existing runtime; inspect and repair any
 missing pane registration separately when changing the launcher.
 The popup menu uses Codex's reported folder for actions launched over its window.
+
+The three launchers pick a repo from Forgejo, so every PC offers the same ones
+(FZTA-17). The list is the repos starred on Forgejo (star one on its page to pin
+it), then the eight this PC's Claude and interactive Codex sessions ran in last
+(30 days, worktrees included), then the rest by latest change; mirrors and
+archived repos are left out. A pick opens this PC's checkout, found by its origin
+remote in `D:\repos` or the shell-config and profile checkouts home-sync keeps,
+else clones into `D:\repos`. Two fixed rows start in `D:\repos` itself or open
+the folder browser; a launcher given a folder (`launch-claude <folder>`) opens
+the browser there, as before. Forgejo is read with the token git holds for it,
+never prompting; when it can't be read, the title says why, the full error goes
+to the failure log, and the list is this PC's checkouts.

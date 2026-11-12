@@ -71,11 +71,7 @@ func runLaunchOpenCode(ctx context.Context, out io.Writer, args []string) (strin
 	if err := checkOpenCodeAuth(filepath.Join(dataHome, "opencode", "auth.json")); err != nil {
 		return "", err
 	}
-	start := `D:\repos`
-	if len(args) == 1 {
-		start = args[0]
-	}
-	dir, err := pickFolder(ctx, "--title", "Launch Claude in OpenCode (API key) in", "--start-dir", start)
+	dir, err := launchFolder(ctx, out, "Claude in OpenCode (API key)", reposRoot, args)
 	if err != nil || dir == "" {
 		return "", err
 	}
