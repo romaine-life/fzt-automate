@@ -4,16 +4,45 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: romaine-life/pipeline-templates/actions/check-fetches@main
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo code=true >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$BASE...HEAD")
+          if grep -qvE '\.md$|^docs/|^LICENSE$' <<< "$files"; then
+            echo code=true >> "$GITHUB_OUTPUT"
+          fi
+
   # command folders run through sh on Linux and PowerShell on Windows; the
   # Windows runner (upstairspc, host mode) has no usable bash, so the two
   # OSes are separate jobs.
   go-linux:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: romaine-life/pipeline-templates/actions/check-fetches@main
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -21,6 +50,8 @@ jobs:
       - run: go test ./...
 
   go-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     defaults:
       run:
@@ -37,15 +68,90 @@ jobs:
           go test ./...
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-  # The check main's branch protection requires: green only when every OS passed.
-  test:
-    needs: [go-linux, go-windows]
-    if: always()
+  # build.yml publishes when release.yml dispatches it; this builds and signs
+  # the same three binaries without uploading them, so a release is never
+  # their first run.
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TAG: ${{ github.sha }}
     steps:
-      - shell: pwsh
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build all platforms
         env:
-          LINUX: ${{ needs.go-linux.result }}
-          WINDOWS: ${{ needs.go-windows.result }}
+          CGO_ENABLED: '0'
         run: |
-          if ($env:LINUX -ne 'success' -or $env:WINDOWS -ne 'success') { throw 'An OS check failed' }
+          $engine = go list -m -f '{{.Version}}' github.com/romaine-life/fzt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          foreach ($target in @(
+            @{ os = 'windows'; arch = 'amd64'; output = 'fzt-automate-windows-amd64.exe' },
+            @{ os = 'linux'; arch = 'amd64'; output = 'fzt-automate-linux-amd64' },
+            @{ os = 'darwin'; arch = 'arm64'; output = 'fzt-automate-darwin-arm64' }
+          )) {
+            $env:GOOS = $target.os
+            $env:GOARCH = $target.arch
+            go build -ldflags="-X github.com/romaine-life/fzt/render.Version=$env:TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine" -o $target.output .
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+      - name: Sign Windows binary
+        env:
+          PFX: ${{ secrets.AT_TERMINAL_PFX }}
+          PFX_PASSWORD: ${{ secrets.AT_TERMINAL_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:PFX) { throw 'AT_TERMINAL_PFX is not set' }
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe not found' }
+          $cert = Join-Path $env:RUNNER_TEMP "fzt-automate-$env:GITHUB_RUN_ID.pfx"
+          [IO.File]::WriteAllBytes($cert, [Convert]::FromBase64String($env:PFX))
+          try {
+            & $signtool.FullName sign /fd SHA256 /f $cert /p $env:PFX_PASSWORD fzt-automate-windows-amd64.exe
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            & $signtool.FullName verify /pa fzt-automate-windows-amd64.exe
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } finally { Remove-Item -LiteralPath $cert -Force }
+
+  # The dry run of release.yml: the release token can write here and the next
+  # v0.1.N is picked the way release.yml picks it. Nothing is tagged or published.
+  release-check:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate release access and version selection
+        env:
+          TOKEN: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:TOKEN) { throw 'PIPELINE_DISPATCH_TOKEN is not set' }
+          $api = "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY"
+          $h = @{ Authorization = "token $env:TOKEN" }
+          $repo = Invoke-RestMethod $api -Headers $h
+          if (-not $repo.permissions.push) { throw 'Release token cannot write this repository' }
+          $sha = git rev-parse HEAD
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $tag = git tag --points-at HEAD -l 'v0.1.*' --sort=-v:refname | Select-Object -First 1
+          if (-not $tag) {
+            $last = git tag -l 'v0.1.*' --sort=-v:refname | Select-Object -First 1
+            $tag = if ($last) { 'v0.1.' + ([int]$last.Split('.')[2] + 1) } else { 'v0.1.0' }
+          }
+          $rel = Invoke-RestMethod "$api/releases/tags/$tag" -Headers $h -SkipHttpErrorCheck -StatusCodeVariable code
+          if ($code -notin 200,404) { throw "Release lookup returned HTTP $code" }
+          Write-Host "Release candidate $tag at $sha (existing release: $($code -eq 200))"
+          Write-Host 'Validated release access and version selection; dry run complete'

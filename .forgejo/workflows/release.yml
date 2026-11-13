@@ -1,15 +1,15 @@
 name: Release
 
-# PRs validate release access and version selection without publishing.
 # Dispatch on main to cut the next v0.1.N and build its three release assets.
+# CI's release-check job runs the access and version checks on every pull
+# request without publishing.
 
 on:
-  pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: release-tag-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'main' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: release-tag-main
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -25,7 +25,6 @@ jobs:
       - name: Validate and cut release
         env:
           TOKEN: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
-          EVENT: ${{ github.event_name }}
           BRANCH: ${{ github.ref_name }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -44,10 +43,6 @@ jobs:
           $rel = Invoke-RestMethod "$api/releases/tags/$tag" -Headers $h -SkipHttpErrorCheck -StatusCodeVariable code
           if ($code -notin 200,404) { throw "Release lookup returned HTTP $code" }
           Write-Host "Release candidate $tag at $sha (existing release: $($code -eq 200))"
-          if ($env:EVENT -ne 'workflow_dispatch') {
-            Write-Host 'Validated release access and version selection; PR dry run complete'
-            exit 0
-          }
           if ($env:BRANCH -ne $repo.default_branch) { throw 'Release only from the default branch' }
           if ($code -eq 404) {
             Invoke-RestMethod -Method Post "$api/tags" -Headers $h -ContentType 'application/json' -Body (@{ tag_name = $tag; target = $sha } | ConvertTo-Json) | Out-Null

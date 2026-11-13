@@ -1,9 +1,9 @@
 name: Build
 
-# Pure Go cross-compiles all three assets on the fast Windows worker. PRs
-# build and sign the same binaries without uploading them.
+# Pure Go cross-compiles all three assets on the fast Windows worker.
+# release.yml dispatches this with the tag it cut; CI builds and signs the
+# same binaries on every pull request without uploading them.
 on:
-  pull_request:
   workflow_dispatch:
     inputs:
       tag:
@@ -15,7 +15,7 @@ jobs:
   windows:
     runs-on: windows-latest
     outputs:
-      release-tag: ${{ steps.upload.outputs.tag || 'validation-only' }}
+      release-tag: ${{ steps.upload.outputs.tag }}
     timeout-minutes: 20
     defaults:
       run:
@@ -64,7 +64,6 @@ jobs:
           } finally { Remove-Item -LiteralPath $cert -Force }
       - name: Upload to release
         id: upload
-        if: github.event_name == 'workflow_dispatch'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -78,20 +77,10 @@ jobs:
             Invoke-RestMethod -Method Post "$api/releases/$($rel.id)/assets?name=$output" -Headers $h -Form @{ attachment = Get-Item $output } | Out-Null
           }
           "tag=$env:TAG" | Add-Content $env:GITHUB_OUTPUT
-  built:
-    needs: windows
-    if: always()
-    runs-on: windows-latest
-    steps:
-      - shell: pwsh
-        env:
-          RESULT: ${{ needs.windows.result }}
-        run: |
-          if ($env:RESULT -ne 'success') { throw "Build failed: $env:RESULT" }
 
   home-sync:
-    needs: [windows, built]
+    needs: windows
     uses: romaine-life/pipeline-templates/.forgejo/workflows/home-sync.yml@main
     secrets: inherit
     with:
-      release-tag: ${{ needs.windows.outputs.release-tag != 'validation-only' && needs.windows.outputs.release-tag || '' }}
+      release-tag: ${{ needs.windows.outputs.release-tag }}
