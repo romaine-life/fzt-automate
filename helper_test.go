@@ -12,6 +12,7 @@ import (
 // FZT_TEST_HELPER set it runs one of these instead of the tests.
 //
 //	print <line>...      each line on stdout
+//	env <name>...        a row per variable: its name, then its value
 //	exit <code>          exit with code
 //	sleep <seconds>      wait, then exit 0
 func TestMain(m *testing.M) {
@@ -34,6 +35,11 @@ func helper(args []string) int {
 	case "print":
 		for _, l := range args[1:] {
 			fmt.Println(l)
+		}
+		return 0
+	case "env":
+		for _, name := range args[1:] {
+			fmt.Printf("%s\t%s\n", name, os.Getenv(name))
 		}
 		return 0
 	case "exit":

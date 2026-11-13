@@ -49,23 +49,34 @@ func readTmuxRows(r io.Reader) ([]string, error) {
 }
 
 // graftTmux appends tmux's rows to the menu as its tmux folder. The rows are
-// built by tmux on each press, so the folder is never saved to the cloud menu.
-// Inside it, search goes by tag (core.TagSearchOn).
+// built by tmux on each press, so they are never saved to the cloud menu.
+// Inside it, search goes by tag (core.TagSearchOn). A top-level menu entry
+// named tmux is that folder: its own entries (the strip, TMUX-206) come first
+// and are saved as menu entries, and tmux's rows join them.
 func graftTmux(items []core.Item, rows []string) []core.Item {
 	if len(rows) == 0 {
 		return items
 	}
-	folder := len(items)
-	items = append(items, core.Item{
-		Fields:      []string{tmuxFolder, "Tabs, windows and everything tmux offers"},
-		ParentIdx:   -1,
-		HasChildren: true,
-		Path:        tmuxFolder,
-		PropertyOf:  -1,
-		Injected:    true,
-		// Searched by tag inside, with tag mode off elsewhere (TMUX-196).
-		TagDefault: true,
-	})
+	folder := -1
+	for i, it := range items {
+		if it.ParentIdx == -1 && len(it.Fields) > 0 && it.Fields[0] == tmuxFolder {
+			folder = i
+			break
+		}
+	}
+	if folder == -1 {
+		folder = len(items)
+		items = append(items, core.Item{
+			Fields:     []string{tmuxFolder, "Tabs, windows and everything tmux offers"},
+			ParentIdx:  -1,
+			Path:       tmuxFolder,
+			PropertyOf: -1,
+			Injected:   true,
+		})
+	}
+	items[folder].HasChildren = true
+	// Searched by tag inside, with tag mode off elsewhere (TMUX-196).
+	items[folder].TagDefault = true
 	stack := []int{folder} // stack[d] is the parent of a row at depth d
 	for _, line := range rows {
 		f := strings.Split(line, "\t")

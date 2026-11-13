@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // A pick runs in the folder of the tab the menu was opened over, when that tab
@@ -23,6 +24,27 @@ func withDir(ctx context.Context, dir string) context.Context {
 func pickDir(ctx context.Context) string {
 	dir, _ := ctx.Value(dirKey{}).(string)
 	return dir
+}
+
+// tabEnv is the environment a folder's program gets in the popup: the active
+// pane of the tab it is over as TMUX_PANE, as a program in that pane has it,
+// and the popup's client as TMUX_CLIENT (TMUX-206). tmux is asked once, when a
+// folder first runs a program.
+func tabEnv(window, client string) func() []string {
+	return sync.OnceValue(func() []string {
+		var env []string
+		if window != "" {
+			if out, err := exec.Command("tmux", "display", "-p", "-t", window, "#{pane_id}").Output(); err == nil {
+				if pane := strings.TrimSpace(string(out)); pane != "" {
+					env = append(env, "TMUX_PANE="+pane)
+				}
+			}
+		}
+		if client != "" {
+			env = append(env, "TMUX_CLIENT="+client)
+		}
+		return env
+	})
 }
 
 // tabFolder asks tmux for the folder of the active pane in window.

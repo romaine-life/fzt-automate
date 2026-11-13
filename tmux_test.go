@@ -60,6 +60,40 @@ func TestGraftTmuxBuildsTheFolder(t *testing.T) {
 	}
 }
 
+// A menu entry named tmux is the folder: its entries stay first and saved,
+// tmux's rows join them (TMUX-206).
+func TestGraftTmuxJoinsTheMenusTmuxEntry(t *testing.T) {
+	rows, _ := readTmuxRows(strings.NewReader(paletteRows))
+	menu := []core.Item{
+		{Fields: []string{"tmux", "Tabs"}, ParentIdx: -1, PropertyOf: -1, HasChildren: true, Children: []int{1}, Path: "tmux"},
+		{Fields: []string{"strip"}, Depth: 1, ParentIdx: 0, PropertyOf: -1, Path: "tmux › strip"},
+	}
+	items := graftTmux(menu, rows)
+	folders := 0
+	for _, it := range items {
+		if it.ParentIdx == -1 && it.Fields[0] == "tmux" {
+			folders++
+		}
+	}
+	if folders != 1 {
+		t.Fatalf("%d tmux folders", folders)
+	}
+	folder := items[0]
+	if folder.Injected || items[1].Injected || !folder.TagDefault {
+		t.Fatalf("the menu's tmux entry = %+v, strip = %+v", folder, items[1])
+	}
+	var names []string
+	for _, c := range folder.Children {
+		names = append(names, items[c].Fields[0])
+	}
+	if strings.Join(names, ",") != "strip,split-window,rename-window,move-tab,reopen-tab" {
+		t.Fatalf("tmux folder holds %v", names)
+	}
+	if items[2].Path != "tmux › split-window" || !items[2].Injected {
+		t.Fatalf("a tmux row = %+v", items[2])
+	}
+}
+
 func TestGraftTmuxWithoutRowsAddsNothing(t *testing.T) {
 	menu := []core.Item{{Fields: []string{"lights"}, ParentIdx: -1, PropertyOf: -1}}
 	if got := graftTmux(menu, nil); len(got) != 1 {

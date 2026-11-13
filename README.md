@@ -40,6 +40,16 @@ savegamePath=power-lines tool:power-lines/power-lines.gba`. Windows' installed-a
 list plays no part, except in the `programs` folder, which lists that list; its
 rows open through `installed-app`.
 
+An entry whose action is `folder:<command>` is a folder its command fills each
+time it is opened: a built-in's rows, or a line per row from a program, its
+name, then a tab and a description, then a tab and the action a pick runs. A
+row whose action is itself `folder:<command>` is a folder the same way, so a
+program can list a tree a level at a time (the strip: `strip`, its follow-ups,
+one follow-up, its commands). In the popup the program gets the tab the popup
+is over as `TMUX_PANE`, its active pane, and the popup's client as
+`TMUX_CLIENT`. A top-level menu entry named `tmux` is the folder Ctrl+B opens:
+its entries come first, and tmux's own rows join them.
+
 Failed menu launches and commands are saved as JSON lines under
 `~/.fzt-automate/failures/` on Windows, or `failures/` in the platform's config
 directory elsewhere (`FZT_CONFIG_DIR` overrides it). Each record includes the

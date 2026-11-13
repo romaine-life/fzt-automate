@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -19,9 +20,13 @@ const folderPrefix = "folder:"
 
 // commandFolders is the tree provider for command folders. Each line the
 // command prints is one child: name, then optionally a tab and a description,
-// then a tab and the action run when the child is picked.
+// then a tab and the action run when the child is picked. A child whose action
+// is itself "folder:<command>" is a folder of that command's lines (TMUX-206).
 type commandFolders struct {
 	commands map[string]string // folder path, as core.ItemFullPath builds it -> command
+	// env, when set, is what a folder's program gets added to its environment:
+	// in the popup, the tab it is over (TMUX_PANE) and its client (TMUX_CLIENT).
+	env func() []string
 }
 
 // newCommandFolders turns every "folder:" item into a folder with no children
@@ -68,7 +73,11 @@ func (p *commandFolders) LoadChildren(parentPath string) []core.Item {
 	if !ok {
 		return nil
 	}
-	rows, err := folderRows(command)
+	var env []string
+	if p.env != nil {
+		env = p.env()
+	}
+	rows, err := folderRows(command, env)
 	if err != nil {
 		return []core.Item{{Fields: []string{command + " failed", err.Error()}, PropertyOf: -1}}
 	}
@@ -81,6 +90,10 @@ func (p *commandFolders) LoadChildren(parentPath string) []core.Item {
 		}
 		if r.action != "" {
 			item.Action = &core.ItemAction{Type: "command", Target: r.action}
+			if sub, ok := strings.CutPrefix(r.action, folderPrefix); ok {
+				item.HasChildren = true
+				p.commands[filepath.Join(parentPath, r.name)] = sub
+			}
 		}
 		children = append(children, item)
 	}
@@ -89,8 +102,9 @@ func (p *commandFolders) LoadChildren(parentPath string) []core.Item {
 
 // folderRows lists a command folder's children: a built-in's rows, or the lines
 // a program or not-yet-moved at command prints, each "name", then optionally a
-// tab and a description, then a tab and the action run when it is picked.
-func folderRows(command string) ([]folderRow, error) {
+// tab and a description, then a tab and the action run when it is picked. A
+// program or at command gets env added to its environment.
+func folderRows(command string, env []string) ([]folderRow, error) {
 	s, err := resolve(command)
 	if err != nil {
 		return nil, err
@@ -108,6 +122,9 @@ func folderRows(command string) ([]folderRow, error) {
 		if cmd, err = programCommand(s.args); err != nil {
 			return nil, err
 		}
+	}
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

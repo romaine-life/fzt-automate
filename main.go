@@ -163,6 +163,9 @@ func main() {
 	}
 
 	folders := &commandFolders{}
+	if popup {
+		folders.env = tabEnv(window, client)
+	}
 	load := func() ([]core.Item, error) { return loadMenu(cacheFile, header, tmuxRows, folders) }
 	items, err := load()
 	if err != nil {

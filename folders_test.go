@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/romaine-life/fzt/core"
@@ -46,6 +48,49 @@ func TestCommandFolders(t *testing.T) {
 	}
 	if p.LoadChildren(itemPath(items, 0)) != nil {
 		t.Error("a menu folder that isn't a command folder loaded children")
+	}
+}
+
+// A row whose action is "folder:<command>" is a folder too, filled when it is
+// entered and read again each time (TMUX-206: strip › follow-ups › a follow-up).
+func TestAFolderRowCanBeAFolder(t *testing.T) {
+	calls := 0
+	testBuiltin(t, &builtin{name: "zz-outer", rows: func(context.Context, []string) ([]folderRow, error) {
+		return []folderRow{{name: "follow-ups", description: "2 open", action: "folder:zz-inner a/b"}, {name: "leaf", action: "run-leaf"}}, nil
+	}})
+	testBuiltin(t, &builtin{name: "zz-inner", rows: func(_ context.Context, args []string) ([]folderRow, error) {
+		calls++
+		return []folderRow{{name: "start", description: strings.Join(args, " "), action: "run-start"}}, nil
+	}})
+	items := []core.Item{{Fields: []string{"strip"}, ParentIdx: -1, Action: &core.ItemAction{Type: "command", Target: "folder:zz-outer"}}}
+	p := newCommandFolders(items)
+	outer := p.LoadChildren(itemPath(items, 0))
+	if len(outer) != 2 || !outer[0].HasChildren || outer[1].HasChildren {
+		t.Fatalf("outer rows: %+v", outer)
+	}
+	path := filepath.Join(itemPath(items, 0), "follow-ups")
+	if !p.Volatile(path) {
+		t.Fatal("the inner folder isn't read again on entry")
+	}
+	inner := p.LoadChildren(path)
+	if len(inner) != 1 || inner[0].Fields[1] != "a/b" || inner[0].Action.Target != "run-start" {
+		t.Fatalf("inner rows: %+v", inner)
+	}
+	p.LoadChildren(path)
+	if calls != 2 {
+		t.Fatalf("the inner folder was read %d times for two entries", calls)
+	}
+}
+
+// In the popup a folder's program learns the tab and client it was opened over.
+func TestAFolderProgramGetsTheTab(t *testing.T) {
+	program := helperLine(t, "env", "TMUX_PANE", "TMUX_CLIENT")
+	items := []core.Item{{Fields: []string{"strip"}, ParentIdx: -1, Action: &core.ItemAction{Type: "command", Target: "folder:" + program}}}
+	p := newCommandFolders(items)
+	p.env = func() []string { return []string{"TMUX_PANE=%7", "TMUX_CLIENT=client-42"} }
+	got := p.LoadChildren(itemPath(items, 0))
+	if len(got) != 2 || got[0].Fields[1] != "%7" || got[1].Fields[1] != "client-42" {
+		t.Fatalf("rows: %+v", got)
 	}
 }
 
