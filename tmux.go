@@ -78,16 +78,14 @@ func graftTmux(items []core.Item, rows []string) []core.Item {
 		}
 		stack = stack[:depth+1]
 		parent := stack[depth]
-		fields := []string{f[1]}
-		if f[2] != "" {
-			fields = append(fields, f[2])
-		}
+		fields, styled := tmuxFields(f[1], f[2])
 		idx := len(items)
 		items = append(items, core.Item{
-			Fields:     fields,
+			Fields:       fields,
+			StyledFields: styled,
 			Depth:      depth + 1,
 			ParentIdx:  parent,
-			Path:       items[parent].Path + " › " + f[1],
+			Path:       items[parent].Path + " › " + fields[0],
 			Input:      f[3],
 			Action:     &core.ItemAction{Type: tmuxAction, Target: f[4]},
 			PropertyOf: -1,
@@ -107,6 +105,33 @@ func graftTmux(items []core.Item, rows []string) []core.Item {
 		stack = append(stack, idx)
 	}
 	return items
+}
+
+// tmuxFields is a row's name and description, the description only if it has
+// one. tmux colours some of them (a window by its Claude state, TMUX-205) with
+// SGR codes: the fields are the plain text, which search matches, and the
+// colours go to StyledFields for drawing, which is nil for a row with none.
+func tmuxFields(name, desc string) ([]string, [][]core.StyledRune) {
+	raw := []string{name}
+	if desc != "" {
+		raw = append(raw, desc)
+	}
+	fields := make([]string, len(raw))
+	coloured := false
+	for i, r := range raw {
+		fields[i] = core.StripANSI(r)
+		if fields[i] != r {
+			coloured = true
+		}
+	}
+	if !coloured {
+		return fields, nil
+	}
+	styled := make([][]core.StyledRune, len(raw))
+	for i, r := range raw {
+		styled[i] = core.ParseANSI(r)
+	}
+	return fields, styled
 }
 
 // tmuxPick is what display-palette reads back for a tmux row: its id, and

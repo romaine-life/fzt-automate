@@ -145,9 +145,9 @@ func TestTmuxFolderSearchesByTag(t *testing.T) {
 	}
 }
 
-// --open tmux/nav/window --row 2 opens the popup inside the nav folder's
-// window list, on its second window, and Enter picks that one (TMUX-202).
-func TestOpenAtANestedFolderAndRow(t *testing.T) {
+// --open tmux/nav/window opens the popup inside the nav folder's window list
+// (TMUX-202), and Enter picks a window there.
+func TestOpenAtANestedFolder(t *testing.T) {
 	const navRows = "0\tnav\tGo to a window or session\t\t0\n" +
 		"1\twindow\t\t\t1\n" +
 		"2\tw1\t\t\t2\n" +
@@ -155,12 +155,12 @@ func TestOpenAtANestedFolderAndRow(t *testing.T) {
 		"2\tw3\t\t\t4\n" +
 		"1\tsession\t\t\t5\n" +
 		"2\ts1\t\t\t6\n"
-	if path, row := startAt("", 2); path != nil || row != 0 {
-		t.Fatalf("startAt with no folder = %v, %d; want nothing", path, row)
+	if path := startFolder(""); path != nil {
+		t.Fatalf("startFolder with no folder = %v; want nothing", path)
 	}
 	rows, _ := readTmuxRows(strings.NewReader(navRows))
 	cfg := core.Config{Layout: "reverse", HidePalette: true, TreeMode: true, Tiered: true, DepthPenalty: 5, AcceptNth: []int{1}}
-	cfg.StartFolder, cfg.StartRow = startAt("tmux/nav/window", 2)
+	cfg.StartFolder = startFolder("tmux/nav/window")
 	s, searchCols := core.NewState(graftTmux(nil, rows), cfg)
 	ctx := s.TopCtx()
 	ctx.TreeExpanded = make(map[int]bool)
@@ -170,8 +170,15 @@ func TestOpenAtANestedFolderAndRow(t *testing.T) {
 		t.Fatalf("no folder %v", cfg.StartFolder)
 	}
 	visible := core.TreeVisibleItems(s)
-	if ctx.TreeCursor < 0 || visible[ctx.TreeCursor].Item.Fields[0] != "w2" {
-		t.Fatalf("cursor at %d, want on w2", ctx.TreeCursor)
+	var names []string
+	for i, v := range visible {
+		names = append(names, v.Item.Fields[0])
+		if v.Item.Fields[0] == "w2" {
+			ctx.TreeCursor = i
+		}
+	}
+	if !strings.Contains(strings.Join(names, ","), "window,w1,w2,w3") {
+		t.Fatalf("the window folder is not open: %v", names)
 	}
 	r := core.HandleUnifiedKeyResult(s, tcell.KeyEnter, 0, false, cfg, searchCols)
 	if action := tui.ProcessAction(s, r.Action); !strings.HasPrefix(action, "select:") {
@@ -179,5 +186,28 @@ func TestOpenAtANestedFolderAndRow(t *testing.T) {
 	}
 	if got := tmuxPick(visible[ctx.TreeCursor].Item, "", false); got != "3" {
 		t.Fatalf("w2 goes back to tmux as %q, want its id 3", got)
+	}
+}
+
+// A row tmux coloured (a window by its Claude state, TMUX-205) is drawn in
+// its colours and searched and picked by its plain text.
+func TestTmuxRowColours(t *testing.T) {
+	const coloured = "0\twindow-nav\tGo to a window\t\t0\n" +
+		"1\t1\t\x1b[38;2;57;186;230mbuild\x1b[39m\t\t1\n" +
+		"1\t2\t[edit]\t\t2\n"
+	rows, _ := readTmuxRows(strings.NewReader(coloured))
+	items := graftTmux(nil, rows)
+	build, edit := items[2], items[3]
+	if build.Fields[1] != "build" || build.Path != "tmux › window-nav › 1" {
+		t.Fatalf("a coloured row's text = %q, path %q", build.Fields[1], build.Path)
+	}
+	if len(build.StyledFields) != 2 || len(build.StyledFields[1]) != len("build") {
+		t.Fatalf("a coloured row's styles = %v", build.StyledFields)
+	}
+	if fg, _, _ := build.StyledFields[1][0].Style.Decompose(); fg != tcell.NewRGBColor(57, 186, 230) {
+		t.Fatalf("build is drawn in %v, want #39bae6", fg)
+	}
+	if edit.StyledFields != nil {
+		t.Fatalf("a row with no colour has styles %v", edit.StyledFields)
 	}
 }

@@ -20,8 +20,7 @@
 //	fzt-automate --popup --window @3 --client /dev/pty0 [--open tmux] < rows
 //	                       # the popup at over a tab, run by tmux's display-palette
 //	                       # with its rows on stdin: runs picks itself (popup.go);
-//	                       # --open tmux/nav/window opens a folder inside a folder,
-//	                       # and --row 3 starts on its third entry
+//	                       # --open tmux/nav/window opens a folder inside a folder
 //	fzt-automate <built-in> [arguments]
 //	                       # one of the at commands it runs itself (builtins.go),
 //	                       # as a pick would: `fzt-automate lights off 30`
@@ -91,7 +90,6 @@ func main() {
 	popup := false
 	runAll := false // --run: the one-shot menu runs every pick itself, scripts and URLs too
 	var window, client, open string
-	row := 0
 
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
@@ -122,11 +120,6 @@ func main() {
 				case "--open":
 					open = args[i+1]
 				}
-				i++
-			}
-		case "--row":
-			if i+1 < len(args) {
-				row, _ = strconv.Atoi(args[i+1])
 				i++
 			}
 		case "--version":
@@ -215,7 +208,7 @@ func main() {
 	}
 
 	if popup {
-		cfg.StartFolder, cfg.StartRow = startAt(open, row)
+		cfg.StartFolder = startFolder(open)
 		m := &popupMenu{cfgDir: cfgDir, window: window, client: client, out: os.Stdout, load: func() ([]core.Item, int, error) {
 			items, err := load()
 			return items, readMenuVersion(cfgDir), err
@@ -421,11 +414,11 @@ func readMenuVersion(cfgDir string) int {
 	return v
 }
 
-// startAt is where --open and --row open the popup: a folder path with its
-// names separated by "/" (tmux/nav/window), and an entry of it counted from 1.
-func startAt(open string, row int) ([]string, int) {
+// startFolder is where --open opens the popup: a folder path with its names
+// separated by "/" (tmux/window-nav).
+func startFolder(open string) []string {
 	if open == "" {
-		return nil, 0
+		return nil
 	}
-	return strings.Split(open, "/"), row
+	return strings.Split(open, "/")
 }
