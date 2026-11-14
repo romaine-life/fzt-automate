@@ -79,16 +79,22 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    env:
-      TAG: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
+      # Named after the number release.yml would give it; only release.yml releases.
+      - name: Number the build
+        id: version
+        uses: romaine-life/pipeline-templates/actions/release-version@main
+        with:
+          prefix: v0.1
+          publish: 'false'
       - uses: romaine-life/pipeline-templates/actions/setup-go@main
         with:
           go-version-file: go.mod
       - name: Build all platforms
         env:
           CGO_ENABLED: '0'
+          TAG: ${{ steps.version.outputs.version }}
         run: |
           $engine = go list -m -f '{{.Version}}' github.com/romaine-life/fzt
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -120,8 +126,8 @@ jobs:
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           } finally { Remove-Item -LiteralPath $cert -Force }
 
-  # The dry run of release.yml: the release token can write here and the next
-  # v0.1.N is picked the way release.yml picks it. Nothing is tagged or published.
+  # The dry run of release.yml: the release token can write here and read the
+  # v0.1.N series release.yml numbers from. Nothing is tagged or published.
   release-check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -132,26 +138,19 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Validate release access and version selection
+      - name: Validate release access
         env:
           TOKEN: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:TOKEN) { throw 'PIPELINE_DISPATCH_TOKEN is not set' }
-          $api = "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY"
-          $h = @{ Authorization = "token $env:TOKEN" }
-          $repo = Invoke-RestMethod $api -Headers $h
+          $repo = Invoke-RestMethod "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY" -Headers @{ Authorization = "token $env:TOKEN" }
           if (-not $repo.permissions.push) { throw 'Release token cannot write this repository' }
-          $sha = git rev-parse HEAD
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $tag = git tag --points-at HEAD -l 'v0.1.*' --sort=-v:refname | Select-Object -First 1
-          if (-not $tag) {
-            $last = git tag -l 'v0.1.*' --sort=-v:refname | Select-Object -First 1
-            $tag = if ($last) { 'v0.1.' + ([int]$last.Split('.')[2] + 1) } else { 'v0.1.0' }
-          }
-          $rel = Invoke-RestMethod "$api/releases/tags/$tag" -Headers $h -SkipHttpErrorCheck -StatusCodeVariable code
-          if ($code -notin 200,404) { throw "Release lookup returned HTTP $code" }
-          Write-Host "Release candidate $tag at $sha (existing release: $($code -eq 200))"
-          Write-Host 'Validated release access and version selection; dry run complete'
+      - name: Number as release.yml would
+        id: version
+        uses: romaine-life/pipeline-templates/actions/release-version@main
+        with:
+          prefix: v0.1
+          publish: 'false'
+          token: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
+      - run: Write-Host "Validated release access; this build is ${{ steps.version.outputs.version }}; dry run complete"

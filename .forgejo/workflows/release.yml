@@ -20,44 +20,48 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Validate and cut release
+      - name: Validate release access
         env:
           TOKEN: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
           BRANCH: ${{ github.ref_name }}
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:TOKEN) { throw 'PIPELINE_DISPATCH_TOKEN is not set' }
+          $repo = Invoke-RestMethod "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY" -Headers @{ Authorization = "token $env:TOKEN" }
+          if (-not $repo.permissions.push) { throw 'Release token cannot write this repository' }
+          if ($env:BRANCH -ne $repo.default_branch) { throw 'Release only from the default branch' }
+      # The commit's v0.1.N if it has one, else the next number, reserved on it.
+      - name: Number the release
+        id: version
+        uses: romaine-life/pipeline-templates/actions/release-version@main
+        with:
+          prefix: v0.1
+          publish: 'true'
+          token: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
+      - name: Cut release
+        env:
+          TOKEN: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
           $api = "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY"
           $h = @{ Authorization = "token $env:TOKEN" }
-          $repo = Invoke-RestMethod $api -Headers $h
-          if (-not $repo.permissions.push) { throw 'Release token cannot write this repository' }
-          $sha = git rev-parse HEAD
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $tag = git tag --points-at HEAD -l 'v0.1.*' --sort=-v:refname | Select-Object -First 1
-          if (-not $tag) {
-            $last = git tag -l 'v0.1.*' --sort=-v:refname | Select-Object -First 1
-            $tag = if ($last) { 'v0.1.' + ([int]$last.Split('.')[2] + 1) } else { 'v0.1.0' }
-          }
+          $tag = $env:TAG
+          $sha = $env:GITHUB_SHA
           $rel = Invoke-RestMethod "$api/releases/tags/$tag" -Headers $h -SkipHttpErrorCheck -StatusCodeVariable code
           if ($code -notin 200,404) { throw "Release lookup returned HTTP $code" }
-          Write-Host "Release candidate $tag at $sha (existing release: $($code -eq 200))"
-          if ($env:BRANCH -ne $repo.default_branch) { throw 'Release only from the default branch' }
+          Write-Host "Release $tag at $sha (existing release: $($code -eq 200))"
           if ($code -eq 404) {
-            Invoke-RestMethod -Method Post "$api/tags" -Headers $h -ContentType 'application/json' -Body (@{ tag_name = $tag; target = $sha } | ConvertTo-Json) | Out-Null
             $body = @{ tag_name = $tag; target_commitish = $sha; name = $tag; body = "$(git log --oneline -1)"; draft = $true } | ConvertTo-Json
             $rel = Invoke-RestMethod -Method Post "$api/releases" -Headers $h -ContentType 'application/json' -Body $body
           }
-          $tagged = (Invoke-RestMethod "$api/tags/$tag" -Headers $h).commit.sha
-          if ($tagged -ne $sha) { throw "$tag points at $tagged, expected $sha" }
           $expected = 'fzt-automate-windows-amd64.exe','fzt-automate-linux-amd64','fzt-automate-darwin-arm64'
           $missing = @($expected | Where-Object { $_ -notin $rel.assets.name })
           if ($missing.Count -eq 0) {
             Write-Host "$tag already has all release assets"
             exit 0
           }
-          $body = @{ ref = $repo.default_branch; inputs = @{ tag = $tag } } | ConvertTo-Json
+          $body = @{ ref = $env:GITHUB_REF_NAME; inputs = @{ tag = $tag } } | ConvertTo-Json
           Invoke-RestMethod -Method Post "$api/actions/workflows/build.yml/dispatches" -Headers $h -ContentType 'application/json' -Body $body | Out-Null
           Write-Host "Dispatched build.yml for $tag"
           $mirrors = @(Invoke-RestMethod "$api/push_mirrors" -Headers $h)

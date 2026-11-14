@@ -2,8 +2,8 @@
 //
 // Plain `go build .` produces a broken binary because main.go's render.Version
 // check exits if the version wasn't injected via ldflags. This wrapper computes
-// the right ldflags (binary version from `git describe`, fzt engine version
-// from go.mod) and runs `go build`.
+// the right ldflags (binary version "dev", fzt engine version from go.mod) and
+// runs `go build`.
 //
 // Usage:
 //
@@ -21,7 +21,9 @@ import (
 )
 
 func main() {
-	binVersion := gitDescribe(".")
+	// A local build is never numbered: CI's release-version (PIPT-7) is the only place a
+	// version comes from.
+	binVersion := "dev"
 	engineVersion := goModVersion("github.com/romaine-life/fzt")
 
 	binName := "fzt-automate"
@@ -71,14 +73,6 @@ func install(src, dst string) error {
 	}
 	_ = os.Remove(oldPath)
 	return nil
-}
-
-func gitDescribe(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "describe", "--tags", "--always", "--dirty").Output()
-	if err != nil {
-		return "dev"
-	}
-	return strings.TrimSpace(string(out))
 }
 
 func goModVersion(modulePath string) string {
