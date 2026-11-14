@@ -34,10 +34,10 @@ github.com/romaine-life/auth v0.1.20 h1:vlXPoNgwZbfrxNi+pBl1cXilNjzrT0Qjqb3h3UV+
 github.com/romaine-life/auth v0.1.20/go.mod h1:Z7QmAx+OASAclFXQYOhSB7x2a6qulKsVGj/yyMdv3kM=
 github.com/romaine-life/fzt v0.2.112 h1:OUuT97SeNwcgFm5Ag7+r3XPbvkAhb7dJleo/rgZaFp0=
 github.com/romaine-life/fzt v0.2.112/go.mod h1:+/4sSnR4iFd8ADQWCwJublmXt9lPzlvweFJJKEbTxLw=
-github.com/romaine-life/fzt-frontend v0.1.67 h1:4G0hFwtRzbmfH4rONmbaPxYx+53pG3g4Cr4VsJ9y9CU=
-github.com/romaine-life/fzt-frontend v0.1.67/go.mod h1:1VzWsvb6KFNMbuEnEGxFsZDfunvyW7NArs461xui6TU=
-github.com/romaine-life/fzt-terminal v0.1.161 h1:wWXHD2oW4CkL0sJWq1FmmQsk6fs5vcGez8+948WIhX0=
-github.com/romaine-life/fzt-terminal v0.1.161/go.mod h1:6ebL45CWpkyrSYdf9xaWApQykIahTYEeU0nIs7GHfsg=
+github.com/romaine-life/fzt-frontend v0.1.68 h1:Ow2/NGrKYkT5Z/BOdNV1AUaoisrxijT6PcFLOI/L5cw=
+github.com/romaine-life/fzt-frontend v0.1.68/go.mod h1:Tb+g4DsAny0RA94z021oT+chuxhNGjL9EyHpKV0xQJg=
+github.com/romaine-life/fzt-terminal v0.1.163 h1:MEwW7Oi6FwFaQ4X5CswsckSHi5Z/mx4rre4rEfPXVAg=
+github.com/romaine-life/fzt-terminal v0.1.163/go.mod h1:BPKg438MooJ7yMDADgvdPPrz9/9bcExV1StuucYyVXI=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.3.0 h1:NGXK3lHquSN08v5vWalVI/L8XU9hdzE/G6xsrze47As=
 github.com/stretchr/objx v0.3.0/go.mod h1:qt09Ya8vawLte6SNmTgCsAVtYtaKzEcn8ATUoHMkEqE=
