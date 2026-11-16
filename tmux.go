@@ -94,13 +94,13 @@ func graftTmux(items []core.Item, rows []string) []core.Item {
 		items = append(items, core.Item{
 			Fields:       fields,
 			StyledFields: styled,
-			Depth:      depth + 1,
-			ParentIdx:  parent,
-			Path:       items[parent].Path + " › " + fields[0],
-			Input:      f[3],
-			Action:     &core.ItemAction{Type: tmuxAction, Target: f[4]},
-			PropertyOf: -1,
-			Injected:   true,
+			Depth:        depth + 1,
+			ParentIdx:    parent,
+			Path:         items[parent].Path + " › " + fields[0],
+			Input:        f[3],
+			Action:       &core.ItemAction{Type: tmuxAction, Target: f[4]},
+			PropertyOf:   -1,
+			Injected:     true,
 		})
 		if len(f) > 5 {
 			// For tag search (FZT-67): separated by spaces or commas, as fzt's --tags-col.

@@ -66,11 +66,6 @@ func configDir() string {
 const shellOpenArg = "--shell-open"
 
 func main() {
-	if render.Version == "UNSET" {
-		fmt.Fprintln(os.Stderr, "fzt-automate: version not set — build with 'go run ./build' (not 'go build .')")
-		os.Exit(1)
-	}
-
 	if len(os.Args) > 1 {
 		if os.Args[1] == shellOpenArg {
 			os.Exit(shellOpenMain(os.Args[2:]))

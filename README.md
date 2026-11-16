@@ -4,12 +4,14 @@ The at menu, its built-in commands, and program launches. The menu and command
 store are described in https://forgejo.romaine.life/romaine-life/at.
 
 CI, signed builds, and releases run on
-[Forgejo](https://forgejo.romaine.life/romaine-life/fzt-automate/actions).
-Run `release.yml` on `main` to cut the next `v0.1.N` and build the Windows,
-Linux, and macOS binaries. The macOS binary is cross-compiled Go; no Mac
-runner is needed. `dispatch.yml` takes fzt and fzt-terminal up through a
-checked pull request; strip-owner starts it when it delivers a change to them,
-and starts `release.yml` once the take-up merges (PIPT-3).
+[Forgejo](https://forgejo.romaine.life/romaine-life/fzt-automate/actions), from
+pipeline-templates' `go` and `release` suites (its `fleet.json`, PIPT-12): pull
+requests run gofmt, vet and tests on Windows and Linux, and each merge that
+changes the code cuts the next `v0.1.N` and builds the Windows, Linux and macOS
+binaries (cross-compiled Go; no Mac runner). The suite stamps `main.version`
+(`version.go`); a local `go build .` reports `dev`. fzt and fzt-terminal are
+taken up through the Go suite's take-up, which strip-owner starts when it
+delivers a change to them.
 
 After the Forgejo release has all three assets, CI starts home-sync on every
 PC. It verifies the signed Windows binary and switches the managed installation
