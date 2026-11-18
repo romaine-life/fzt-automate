@@ -12,7 +12,7 @@ import (
 )
 
 func init() {
-	register(&builtin{name: "windows", about: "folder: every open window, on every virtual desktop, most recent first", rows: windowRows})
+	register(&builtin{name: "windows", about: "folder: every open window, on every virtual desktop, most recent first, named by its program", rows: windowRows})
 	register(&builtin{name: "focus", usage: "<window>", about: "switch to a window the windows folder listed", run: runFocus})
 	register(&builtin{name: "programs", about: "folder: every program in Windows' installed-apps list", rows: programRows})
 	register(&builtin{name: "installed-app", usage: "<name> <appid>", about: "switch to an app from Windows' installed-apps list, or open it (the programs folder's rows)", run: runInstalledApp})
@@ -38,16 +38,39 @@ func windowRows(context.Context, []string) ([]folderRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	return windowRowsOf(ws), nil
+}
+
+// windowRowsOf names each window by its program's short name, the word you'd
+// type to find it (chrome, obs, discord), with its title beside it: a title
+// changes with every page and document, so it can't be the name (FZTA-22). A
+// window whose program can't be read (an elevated one) is named by its title.
+func windowRowsOf(ws []desktopWindow) []folderRow {
 	unique := uniqueNames()
 	var rows []folderRow
 	for _, w := range ws {
-		program := fmt.Sprintf("pid %d", w.pid)
-		if w.processPath != "" {
-			program = strings.TrimSuffix(filepath.Base(w.processPath), filepath.Ext(w.processPath))
+		name, description := shortProgramName(w.processPath), w.title
+		if name == "" {
+			name, description = w.title, fmt.Sprintf("pid %d", w.pid)
 		}
-		rows = append(rows, folderRow{name: unique(w.title), description: program, action: joinArgs("focus", windowID(w.handle))})
+		rows = append(rows, folderRow{name: unique(name), description: description, action: joinArgs("focus", windowID(w.handle))})
 	}
-	return rows, nil
+	return rows
+}
+
+// bitness is the 64 or 32 some programs end their file's name with (obs64,
+// app_x64), after a letter so a version number (x264) stays.
+var bitness = regexp.MustCompile(`(?i)([a-z])[-_]?x?(?:64|32)$`)
+
+// shortProgramName is a program's file name, lowercased, without its extension
+// or a trailing 64 or 32: chrome, obs, windowsterminal. Its product name
+// ("Google Chrome") leads with the vendor, which nobody types.
+func shortProgramName(path string) string {
+	if path == "" {
+		return ""
+	}
+	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	return strings.ToLower(bitness.ReplaceAllString(base, "$1"))
 }
 
 func runFocus(_ context.Context, _ io.Writer, args []string) (string, error) {

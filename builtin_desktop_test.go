@@ -50,3 +50,31 @@ func TestLaunchNeedsANameAndAProgram(t *testing.T) {
 		t.Fatal("a launch with no program must fail")
 	}
 }
+
+func TestWindowRowsAreNamedByProgram(t *testing.T) {
+	chrome := filepath.Join("Google", "Chrome", "Application", "chrome.exe")
+	rows := windowRowsOf([]desktopWindow{
+		{handle: 1, title: "Place Your Order - Amazon Checkout - Google Chrome", processPath: chrome},
+		{handle: 2, title: "OBS Studio 33.0.0 - Profile: Untitled", processPath: filepath.Join("obs-studio", "bin", "64bit", "obs64.exe")},
+		{handle: 3, title: "Home - Mozilla Firefox", processPath: filepath.Join("Mozilla Firefox", "firefox.exe")},
+		{handle: 4, title: "Gmail - Google Chrome", processPath: chrome},
+		{handle: 5, title: "Encoder", processPath: filepath.Join("tools", "x264.exe")},
+		{handle: 6, title: "Task Manager", pid: 42},
+	})
+	want := []struct{ name, description string }{
+		{"chrome", "Place Your Order - Amazon Checkout - Google Chrome"},
+		{"obs", "OBS Studio 33.0.0 - Profile: Untitled"},
+		{"firefox", "Home - Mozilla Firefox"},
+		{"chrome (2)", "Gmail - Google Chrome"},
+		{"x264", "Encoder"},
+		{"Task Manager", "pid 42"},
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("got %d rows, want %d", len(rows), len(want))
+	}
+	for i, w := range want {
+		if rows[i].name != w.name || rows[i].description != w.description {
+			t.Errorf("row %d: got %q / %q, want %q / %q", i, rows[i].name, rows[i].description, w.name, w.description)
+		}
+	}
+}
