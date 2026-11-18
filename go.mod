@@ -7,7 +7,7 @@ require (
 	github.com/romaine-life/auth v0.1.20
 	github.com/romaine-life/fzt v0.2.119
 	github.com/romaine-life/fzt-frontend v0.1.78
-	github.com/romaine-life/fzt-terminal v0.1.180
+	github.com/romaine-life/fzt-terminal v0.1.181
 	golang.org/x/sys v0.49.0
 )
 
