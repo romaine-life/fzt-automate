@@ -52,6 +52,13 @@ is over as `TMUX_PANE`, its active pane, and the popup's client as
 `TMUX_CLIENT`. A top-level menu entry named `tmux` is the folder Ctrl+B opens:
 its entries come first, and tmux's own rows join them.
 
+`folder:reboot` is restarting the PC behind a confirmation (FZTA-23). The menu's
+search reaches every row of the static tree, so a restart entry there would be one
+stray Enter away; the folder's one row, "restart now", exists only once the folder is
+opened. It runs `shutdown /r /t 0`, the same restart as Start's: any delay would imply
+`/f`, closing apps with unsaved work without asking. The tmux session set comes back
+at the next sign-in.
+
 Failed menu launches and commands are saved as JSON lines under
 `~/.fzt-automate/failures/` on Windows, or `failures/` in the platform's config
 directory elsewhere (`FZT_CONFIG_DIR` overrides it). Each record includes the
