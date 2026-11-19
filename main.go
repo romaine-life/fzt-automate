@@ -207,7 +207,7 @@ func main() {
 
 	if popup {
 		cfg.StartFolder = startFolder(open)
-		m := &popupMenu{cfgDir: cfgDir, window: window, client: client, out: os.Stdout, load: func() ([]core.Item, int, error) {
+		m := &popupMenu{cfgDir: cfgDir, window: window, client: client, out: os.Stdout, tabEnv: folders.env, load: func() ([]core.Item, int, error) {
 			items, err := load()
 			return items, readMenuVersion(cfgDir), err
 		}}

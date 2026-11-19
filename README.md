@@ -49,7 +49,8 @@ row whose action is itself `folder:<command>` is a folder the same way, so a
 program can list a tree a level at a time (the strip: `strip`, its follow-ups,
 one follow-up, its commands). In the popup the program gets the tab the popup
 is over as `TMUX_PANE`, its active pane, and the popup's client as
-`TMUX_CLIENT`. A top-level menu entry named `tmux` is the folder Ctrl+B opens:
+`TMUX_CLIENT`, and so does a quick pick's program (term-share reads it to
+share that tab's window). A top-level menu entry named `tmux` is the folder Ctrl+B opens:
 its entries come first, and tmux's own rows join them.
 
 `folder:reboot` is restarting the PC behind a confirmation (FZTA-23). The menu's

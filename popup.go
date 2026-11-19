@@ -95,6 +95,10 @@ type popupMenu struct {
 	window   string    // the window of the tab the popup is over
 	client   string    // the terminal showing it
 	out      io.Writer // where a tmux row's pick goes back to display-palette
+	// tabEnv is what a quick program or command adds to its environment: the tab
+	// the popup is over as TMUX_PANE and the popup's client as TMUX_CLIENT, as a
+	// folder's program gets them (tabEnv in tabdir.go). Nil adds nothing.
+	tabEnv func() []string
 }
 
 const (
@@ -219,6 +223,14 @@ func (m *popupMenu) runQuick(item core.Item, name, line string, s step, live liv
 				var err error
 				if cmd, err = programCommand(s.args); err != nil {
 					return job{}, err
+				}
+			}
+			if m.tabEnv != nil {
+				if env := m.tabEnv(); len(env) > 0 {
+					if cmd.Env == nil {
+						cmd.Env = os.Environ()
+					}
+					cmd.Env = append(cmd.Env, env...)
 				}
 			}
 			cmd.Dir = s.dir

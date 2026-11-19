@@ -166,6 +166,20 @@ func TestQuickProgramShowsTheResultAndMarksAnOverrun(t *testing.T) {
 	}
 }
 
+// A quick program learns the tab the popup is over, as a folder's program does: term-share
+// reads TMUX_PANE to know which window to share (TSH-1).
+func TestQuickProgramGetsTheTab(t *testing.T) {
+	m := &popupMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}, tabEnv: func() []string {
+		return []string{"TMUX_PANE=%7", "TMUX_CLIENT=/dev/pts/3"}
+	}}
+	t.Setenv("TMUX_PANE", "")
+	s := pick(t, m, &fakeLive{}, cmdItem("tab", helperLine(t, "env", "TMUX_PANE", "TMUX_CLIENT"), true))
+	if s.Panel.Style != core.PanelOK || len(s.Panel.Lines) != 2 ||
+		s.Panel.Lines[0] != "TMUX_PANE\t%7" || s.Panel.Lines[1] != "TMUX_CLIENT\t/dev/pts/3" {
+		t.Fatalf("panel = %+v", s.Panel)
+	}
+}
+
 func TestQuickProgramFailureAndSilence(t *testing.T) {
 	m := &popupMenu{cfgDir: t.TempDir(), overruns: map[string]bool{}}
 	live := &fakeLive{}
