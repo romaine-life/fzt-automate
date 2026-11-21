@@ -2,11 +2,7 @@
 
 package main
 
-import "os/exec"
-
 func stopProcesses(string) error { return errWindowsOnly }
-
-func startDetached(cmd *exec.Cmd) error { return cmd.Start() }
 
 type hidInterface struct {
 	path             string

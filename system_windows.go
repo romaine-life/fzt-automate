@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -36,13 +34,6 @@ func stopProcesses(image string) error {
 		windows.CloseHandle(p)
 	}
 	return nil
-}
-
-// startDetached starts a program that outlives this one and the tab it ran
-// in: no console, out of tmux's job.
-func startDetached(cmd *exec.Cmd) error {
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.DETACHED_PROCESS | windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_BREAKAWAY_FROM_JOB}
-	return cmd.Start()
 }
 
 var (
