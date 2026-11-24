@@ -492,7 +492,7 @@ func chooseRepoFolder(ctx context.Context, out io.Writer, agent, browseStart str
 		logFailure("", "repo picker for "+agent, "", detail)
 	}
 	pick, err := tui.Run(pickItems(choices, time.Now()), tui.Config{
-		Layout: "reverse", Border: true, HeaderLines: 1, Title: title,
+		Layout: "reverse", Border: true, TreeMode: true, HidePalette: true, HeaderLines: 1, Title: title,
 	})
 	if err != nil {
 		return "", err

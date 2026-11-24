@@ -243,7 +243,7 @@ func runResumeClaude(ctx context.Context, out io.Writer, args []string) (string,
 		})
 	}
 	pick, err := tui.Run(items, tui.Config{
-		Layout: "reverse", Border: true, HeaderLines: 1,
+		Layout: "reverse", Border: true, TreeMode: true, HidePalette: true, HeaderLines: 1,
 		Title: fmt.Sprintf("Resume a Claude session (%d on this PC, newest first)", len(sessions)),
 	})
 	if err != nil {

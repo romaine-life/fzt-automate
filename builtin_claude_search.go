@@ -130,7 +130,7 @@ func runClaudeSearch(ctx context.Context, out io.Writer, args []string) (string,
 		})
 	}
 	pick, err := tui.Run(items, tui.Config{
-		Layout: "reverse", Border: true, HeaderLines: 1,
+		Layout: "reverse", Border: true, TreeMode: true, HidePalette: true, HeaderLines: 1,
 		Title: fmt.Sprintf("%d matches for %s, best first (index current at %s)", len(result.Hits), words, current),
 	})
 	if err != nil {
