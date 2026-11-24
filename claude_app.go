@@ -90,8 +90,13 @@ func respawnAs(dir, name string, argv []string) error {
 		return fmt.Errorf("not in a tmux pane: run it from the at menu")
 	}
 	tmuxArgs := append([]string{"respawn-pane", "-k", "-t", pane, "-c", dir}, tmuxProgram(argv)...)
-	if msg, err := exec.Command("tmux", tmuxArgs...).CombinedOutput(); err != nil {
+	if msg, err := runTmux(tmuxArgs...); err != nil {
 		return fmt.Errorf("tmux couldn't start %s: %s", name, strings.TrimSpace(string(msg)))
 	}
 	return nil
+}
+
+// runTmux runs a tmux command and gives what it printed; a seam for tests.
+var runTmux = func(args ...string) ([]byte, error) {
+	return exec.Command("tmux", args...).CombinedOutput()
 }

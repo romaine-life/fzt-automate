@@ -97,13 +97,29 @@ func runExplore(ctx context.Context, out io.Writer, args []string) (string, erro
 
 // runLaunchClaude starts the Claude app in the folder picked, in this tab:
 // tmux restarts the pane with it in place of this program, so the tab is
-// Claude's and closes with it.
+// Claude's and closes with it. at-claude picks the repo itself (ATC-194): it
+// starts at once on its own repo list, so the session's avatars are dealt while
+// the list loads; only Claude Code, or a folder to browse from, uses this
+// picker.
 func runLaunchClaude(ctx context.Context, out io.Writer, args []string) (string, error) {
 	if len(args) > 1 {
 		return "", usageError(builtins["launch-claude"])
 	}
 	if os.Getenv("TMUX_PANE") == "" {
 		return "", errors.New("not in a tmux pane: run it from the at menu")
+	}
+	if len(args) == 0 {
+		app, err := readClaudeApp()
+		if err != nil {
+			return "", err
+		}
+		if app == appAtClaude {
+			argv, err := claudeArgv(app, "", false)
+			if err != nil {
+				return "", err
+			}
+			return "", respawnAs(reposRoot, app, append(argv, "-pick-repo"))
+		}
 	}
 	dir, err := launchFolder(ctx, out, "Claude", reposRoot, args)
 	if err != nil || dir == "" {

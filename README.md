@@ -93,8 +93,11 @@ or API logins report an error before the picker; a failed launch keeps its tab.
 The Claude launchers start the app tmux's `@claude-app` names: `at-claude`, the
 terminal harness, or `claude-code`, Claude Code itself (ATC-6, ATC-7); the home
 profile's `tmux/windows.conf` sets it. It is read at each launch, so a change there
-takes effect at the next one; an unset or unknown value stops the launch and says so. `launch-claude` picks a
-repo (below) and replaces its tmux pane with that app. `resume-claude` picks a past session
+takes effect at the next one; an unset or unknown value stops the launch and says so. `launch-claude`
+replaces its tmux pane with that app in a repo picked from the list below. at-claude
+shows that list itself (ATC-194): `launch-claude` starts `at-claude -pick-repo` in
+`D:\repos` at once, so the session's avatars are dealt while the list loads; for
+Claude Code, and for `launch-claude <folder>`, the picker is this program's. `resume-claude` picks a past session
 by its name and resumes it in its folder; `resume-claude <session id> [--chrome]`
 resumes that one in this pane's folder, with Claude in Chrome connected when asked,
 for tmux's session restore, reopen-window and `claude-relaunch-with-chrome`.
@@ -115,7 +118,7 @@ Already-running sessions retain their existing runtime; inspect and repair any
 missing pane registration separately when changing the launcher.
 The popup menu uses Codex's reported folder for actions launched over its window.
 
-The three launchers pick a repo from Forgejo, so every PC offers the same ones
+The launchers pick a repo from Forgejo, so every PC offers the same ones
 (FZTA-17). The list is the repos starred on Forgejo (star one on its page to pin
 it), then the eight this PC's Claude and interactive Codex sessions ran in last
 (30 days, worktrees included), then the rest by latest change; mirrors and

@@ -105,3 +105,38 @@ func TestLaunchersReadClaudeApp(t *testing.T) {
 		}
 	}
 }
+
+// launch-claude with at-claude starts it at once on its own repo list, in the
+// repos folder (ATC-194): the list loads in the window, which deals the
+// session's avatars meanwhile. Nothing is picked here.
+func TestLaunchClaudeLetsAtClaudePick(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("at-claude is found through home-sync's install, which only Windows has")
+	}
+	setClaudeApp(t, appAtClaude, nil)
+	t.Setenv("TMUX_PANE", "%7")
+	programFiles := t.TempDir()
+	t.Setenv("ProgramFiles", programFiles)
+	program := filepath.Join(programFiles, "at-home", "at-claude", "current", "at-claude.exe")
+	os.MkdirAll(filepath.Dir(program), 0o755)
+	if err := os.WriteFile(program, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	record := filepath.Join(t.TempDir(), "tools.json")
+	if err := os.WriteFile(record, []byte(`[{"tool": "at-claude", "entry": "at-claude.exe"}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldRecord, oldTmux := homeSyncTools, runTmux
+	t.Cleanup(func() { homeSyncTools, runTmux = oldRecord, oldTmux })
+	homeSyncTools = record
+	var ran []string
+	runTmux = func(args ...string) ([]byte, error) { ran = args; return nil, nil }
+
+	if _, err := runLaunchClaude(context.Background(), io.Discard, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := append([]string{"respawn-pane", "-k", "-t", "%7", "-c", reposRoot}, tmuxProgram([]string{program, "-pick-repo"})...)
+	if !slices.Equal(ran, want) {
+		t.Errorf("tmux %q, want %q", ran, want)
+	}
+}
