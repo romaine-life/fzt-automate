@@ -30,8 +30,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
-github.com/romaine-life/auth v0.1.62 h1:GTyH0LBU8v+36q7VkIMdhGy7TEgqQp+WSV5/2NfnesU=
-github.com/romaine-life/auth v0.1.62/go.mod h1:Z7QmAx+OASAclFXQYOhSB7x2a6qulKsVGj/yyMdv3kM=
+github.com/romaine-life/auth v0.1.63 h1:MTPGU+LpbhGiHWrkBz3fuvjQvokeDc6nFDWCnDQAm6E=
+github.com/romaine-life/auth v0.1.63/go.mod h1:Z7QmAx+OASAclFXQYOhSB7x2a6qulKsVGj/yyMdv3kM=
 github.com/romaine-life/fzt v0.2.121 h1:F/T05f8joEBKPnISJgGTIOyOHoLN+9FBkltppiNZ8Sg=
 github.com/romaine-life/fzt v0.2.121/go.mod h1:jt2ld8HxIBYAcLxpmZe1DFZr/KCoCxEOR2g6bXBCy0I=
 github.com/romaine-life/fzt-frontend v0.1.82 h1:lT/KOjZfHyak5NZm1Aiudsk3zZFyxjt8NoWEz1eGXUU=
