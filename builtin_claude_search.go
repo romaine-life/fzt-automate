@@ -2,9 +2,10 @@ package main
 
 // Search every Claude Code session (HOMECFG-84) and open the one picked in VS
 // Code at the part that matched (FZT-71; this was at's claude-search.ps1 and
-// lib/claude-search.py). The session-index service on the NAS answers the
-// search as this machine and keeps its index current as the PCs copy
-// transcripts up (AHT-15); the session itself is read from the share.
+// lib/claude-search.py). On the PCs the session-index service on the NAS answers
+// the search as this machine and keeps its index current as the PCs copy
+// transcripts up (AHT-15); the session itself is read from the share. A work
+// laptop searches only its own sessions (builtin_claude_search_local.go).
 
 import (
 	"bufio"
@@ -17,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -105,15 +107,22 @@ func runClaudeSearch(ctx context.Context, out io.Writer, args []string) (string,
 			return "", nil
 		}
 	}
-	token, err := sessionIndexToken(ctx)
-	if err != nil {
-		return "", err
-	}
 	searchCtx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
-	result, err := searchArchive(searchCtx, sessionIndex, token, words)
-	if err != nil {
-		return "", err
+	var result searchResult
+	if runtime.GOOS == "windows" {
+		token, err := sessionIndexToken(ctx)
+		if err != nil {
+			return "", err
+		}
+		if result, err = searchArchive(searchCtx, sessionIndex, token, words); err != nil {
+			return "", err
+		}
+	} else {
+		var err error
+		if result, err = searchLocal(searchCtx, words); err != nil {
+			return "", err
+		}
 	}
 	current := result.Current.Local().Format("2006-01-02 15:04")
 	if len(result.Hits) == 0 {
@@ -157,7 +166,11 @@ func runClaudeSearch(ctx context.Context, out io.Writer, args []string) (string,
 // "<file>:<line>" for the part that matched.
 func writeSession(h searchHit) (string, error) {
 	rel, pc, session, target := h.File, h.PC, h.Session, h.Line
-	src, err := os.Open(filepath.Join(append([]string{transcriptShare}, strings.Split(rel, "/")...)...))
+	path := rel
+	if !filepath.IsAbs(rel) {
+		path = filepath.Join(append([]string{transcriptShare}, strings.Split(rel, "/")...)...)
+	}
+	src, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}

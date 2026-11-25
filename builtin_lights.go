@@ -13,14 +13,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
+var lights = &builtin{name: "lights", usage: "on | off [30|60|120] | night [warm|red|amber|blue] [minutes]",
+	about: "the living room lights: motion-controlled, held off for a while, or night mode"}
+
+// The lights are the home's, so only the PCs offer them; a work laptop has none.
 func init() {
-	register(&builtin{name: "lights", usage: "on | off [30|60|120] | night [warm|red|amber|blue] [minutes]",
-		about: "the living room lights: motion-controlled, held off for a while, or night mode", run: runLights})
+	lights.run = runLights
+	if runtime.GOOS == "windows" {
+		register(lights)
+	}
 }
 
 var homeHubBase = "https://home-hub.home.romaine.life"
@@ -35,7 +42,7 @@ type livingRoom struct {
 }
 
 func runLights(ctx context.Context, out io.Writer, args []string) (string, error) {
-	b := builtins["lights"]
+	b := lights
 	if len(args) == 0 {
 		return "", usageError(b)
 	}
