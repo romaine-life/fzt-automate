@@ -227,7 +227,7 @@ func TestPickItemsSayWhereEachRepoIs(t *testing.T) {
 	if got := items[3].Fields[1]; got != "★ starred · last session 2 h ago · nelsong6" {
 		t.Errorf("here = %q", got)
 	}
-	if got := items[4].Fields[1]; got != `not on this PC: clones into D:\repos · romaine-life · an app` {
+	if got := items[4].Fields[1]; got != "not on this PC: clones into "+reposRoot+" · romaine-life · an app" {
 		t.Errorf("away = %q", got)
 	}
 }

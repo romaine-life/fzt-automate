@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 )
@@ -47,7 +48,14 @@ func toolPath(name, file string) (string, error) {
 	c, ok := readToolCurrent(toolsNas, name)
 	if !ok {
 		if c, ok = readToolCurrent(toolsLocal, name); !ok {
-			return "", fmt.Errorf("tool %s is not published in %s", name, toolsNas)
+			// Not published: a machine with no NAS, such as the Linux laptop,
+			// installs its tools on the PATH.
+			if file == "" {
+				if p, err := exec.LookPath(name); err == nil {
+					return p, nil
+				}
+			}
+			return "", fmt.Errorf("tool %s is not published in %s or on the PATH", name, toolsNas)
 		}
 	}
 	if file == "" {

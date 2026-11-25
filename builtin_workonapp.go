@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,9 +22,12 @@ import (
 
 const (
 	originWindowEnv = "AT_ORIGIN_WINDOW"
-	reposRoot       = `D:\repos`
 	forgejoBase     = "https://forgejo.romaine.life/"
 )
+
+// reposRoot is where repos are checked out: D:\repos on the PCs, /d/repos on the
+// Linux laptop.
+var reposRoot = map[bool]string{true: `D:\repos`, false: "/d/repos"}[runtime.GOOS == "windows"]
 
 // homeState is home-sync's machine/state.json, read live from the NAS.
 var homeState = `\\NelsonNAS\files\shell-config-profile-home\machine\state.json`
