@@ -1,33 +1,41 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/romaine-life/fzt/core"
+	"github.com/romaine-life/logline"
 )
 
+// failureHistory reads dir's failure log and its rolled copy, oldest first, every line
+// as the estate's standard: a "command failed" error line, its fields by key.
 func failureHistory(t *testing.T, dir string) []map[string]string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(dir, "failures", "*.log*"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	var entries []map[string]string
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
+	path := filepath.Join(dir, failureLogName)
+	for _, file := range []string{path + ".old", path} {
+		data, err := os.ReadFile(file)
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-			var entry map[string]string
-			if err := json.Unmarshal([]byte(line), &entry); err != nil {
-				t.Fatalf("invalid failure record in %s: %v", path, err)
+		for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+			e, err := logline.Parse(line)
+			if err != nil {
+				t.Fatalf("not a standard line in %s: %v: %.200q", file, err, line)
+			}
+			if e.Level != logline.Error || e.Message != "command failed" {
+				t.Fatalf("got %s %q, want an error line \"command failed\"", e.Level, e.Message)
+			}
+			entry := map[string]string{}
+			for _, f := range e.Fields {
+				entry[f.Key] = f.Value
 			}
 			entries = append(entries, entry)
 		}
@@ -47,9 +55,12 @@ func TestPopupFailuresLeaveHistory(t *testing.T) {
 		t.Fatalf("got %d records, want 3: %+v", len(entries), entries)
 	}
 	for i, want := range []string{"isn't installed here", "exit 3", "which tab"} {
-		if !strings.Contains(entries[i]["Error"], want) {
+		if !strings.Contains(entries[i]["error"], want) {
 			t.Fatalf("record %d = %+v, want %q", i, entries[i], want)
 		}
+	}
+	if entries[0]["name"] != "missing" {
+		t.Fatalf("record 0 = %+v, want the entry's name", entries[0])
 	}
 	if live.closed || live.s.Panel.Style != core.PanelFailed {
 		t.Fatal("logging changed the failure display or closed the menu")
@@ -70,8 +81,11 @@ func TestFailureHistorySurvivesAnotherProcess(t *testing.T) {
 		}
 	}
 	entries := failureHistory(t, dir)
-	if len(entries) != 2 || entries[0]["Error"] == entries[1]["Error"] {
+	if len(entries) != 2 || entries[0]["error"] != "first program failed" || entries[1]["error"] != "second program failed" {
 		t.Fatalf("history was lost or overwritten: %+v", entries)
+	}
+	if entries[0]["name"] != "test program" || entries[0]["directory"] != "test folder" {
+		t.Fatalf("fields: %+v", entries[0])
 	}
 }
 
@@ -85,53 +99,41 @@ func TestTakeoverCannotStartTmuxKeepsErrorAndLogs(t *testing.T) {
 		t.Fatalf("error did not stay in the output box: %+v", live.s)
 	}
 	entries := failureHistory(t, dir)
-	if len(entries) != 1 || !strings.Contains(entries[0]["Error"], "didn't start") {
+	if len(entries) != 1 || !strings.Contains(entries[0]["error"], "didn't start") {
 		t.Fatalf("failure to start tmux was not logged: %+v", entries)
 	}
 }
 
-func TestFailureHistoryRotatesAndExpires(t *testing.T) {
+func TestFailureHistoryStaysOneLineBoundedAndRolls(t *testing.T) {
 	dir := t.TempDir()
-	logs := filepath.Join(dir, "failures")
-	if err := os.Mkdir(logs, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	old := filepath.Join(logs, "at-999999.log")
-	if err := os.WriteFile(old, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	before := time.Now().Add(-31 * 24 * time.Hour)
-	if err := os.Chtimes(old, before, before); err != nil {
-		t.Fatal(err)
-	}
 	for i := 0; i < 40; i++ {
-		if got := logFailure(dir, "a\nprogram", "folder", strings.Repeat("x", 65536)); strings.Contains(got, "Couldn't save") {
-			t.Fatal(got)
+		if got := logFailure(dir, "a\nprogram", "folder", strings.Repeat("x", 65537)); len(got) != 65537 {
+			t.Fatalf("logFailure changed the message it returns: %d bytes", len(got))
 		}
 	}
-	if _, err := os.Stat(old); !os.IsNotExist(err) {
-		t.Fatalf("expired failure log remains: %v", err)
-	}
-	paths, _ := filepath.Glob(filepath.Join(logs, "*.log*"))
-	if len(paths) != 2 {
-		t.Fatalf("got %d rolling files, want 2", len(paths))
-	}
-	for _, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil || info.Size() > failureLogBytes {
+	path := filepath.Join(dir, failureLogName)
+	for _, file := range []string{path, path + ".old"} {
+		info, err := os.Stat(file)
+		if err != nil || info.Size() > logline.Limit+80*1024 {
 			t.Fatalf("unbounded failure log: %v, %v", info, err)
 		}
 	}
-	failureHistory(t, dir)
+	entries := failureHistory(t, dir)
+	if len(entries) == 0 || len(entries) >= 40 {
+		t.Fatalf("got %d records across the roll", len(entries))
+	}
+	last := entries[len(entries)-1]
+	if last["name"] != "a\nprogram" || !strings.HasSuffix(last["error"], " [truncated]") || len(last["error"]) != 64*1024+len(" [truncated]") {
+		t.Fatalf("record not kept whole and bounded: name %q, error %d bytes", last["name"], len(last["error"]))
+	}
 }
 
-func TestFailureLogWriteErrorIsReported(t *testing.T) {
+func TestFailureLogThatCantBeWrittenStillReturnsTheError(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(dir, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := logFailure(dir, "program", "", "original error")
-	if !strings.HasPrefix(got, "original error\nCouldn't save failure log:") {
-		t.Fatalf("lost original error or logging failure: %s", got)
+	if got := logFailure(dir, "program", "", "original error"); got != "original error" {
+		t.Fatalf("lost the original error: %q", got)
 	}
 }

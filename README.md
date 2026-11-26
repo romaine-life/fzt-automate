@@ -60,13 +60,17 @@ opened. It runs `shutdown /r /t 0`, the same restart as Start's: any delay would
 `/f`, closing apps with unsaved work without asking. The tmux session set comes back
 at the next sign-in.
 
-Failed menu launches and commands are saved as JSON lines under
-`~/.fzt-automate/failures/` on Windows, or `failures/` in the platform's config
-directory elsewhere (`FZT_CONFIG_DIR` overrides it). Each record includes the
-time, entry name, working directory when known, and error text. Each process
-owns two rolling files of at most 1 MiB each; old processes' files expire after
-30 days when another process writes its first failure. Records limit error text
-to 64 KiB; the existing error displays and program exit codes are unchanged.
+Failed menu launches and commands are logged to `~/.fzt-automate/fzt-automate.log`
+on Windows, or `fzt-automate.log` in the platform's config directory elsewhere
+(`FZT_CONFIG_DIR` overrides it), in the estate's standard line
+([logline](https://github.com/romaine-life/logline), OpenProject AHT-204): an
+`error` line `command failed` with the entry's `name`, the `directory` it ran in
+and the `error` text as fields, e.g.
+`2026-11-26T09:12:03.512-08:00 pid=4120 error command failed name=lights directory=D:\repos error="lights can't run: exit status 1"`.
+Every menu appends to the one file, a line per write so simultaneous menus keep
+their lines whole; past 1 MiB it moves to `fzt-automate.log.old`. Records limit
+the name and directory to 16 KiB and the error text to 64 KiB; the existing error
+displays and program exit codes are unchanged.
 
 The output box stays open when a program cannot start. A program that starts in
 a new tmux window and then fails keeps its pane through `remain-on-exit=failed`;

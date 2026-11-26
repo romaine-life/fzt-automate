@@ -1,91 +1,38 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-	"sync"
-	"time"
+
+	"github.com/romaine-life/logline"
 )
 
-const failureLogBytes = 1024 * 1024
+// failureLogName is the failure log's file in the config directory: one file every
+// fzt-automate appends to, written as the estate's standard line (logline, AHT-204).
+// logline opens it for each line, so simultaneous menus keep every line whole, and
+// moves it to <name>.old past 1 MiB.
+const failureLogName = "fzt-automate.log"
 
-var failureLogMu sync.Mutex
-
-// A process owns its two rolling files; simultaneous menus never rotate
-// or truncate each other's history. Old processes' files expire after 30 days.
+// logFailure records a failed launch or command in dir's failure log (the config
+// directory when dir is empty) and returns message for the caller to show. name is
+// the entry, cwd the folder it ran in (this process's when empty). A log that can't be
+// written gives way to the failure, which the caller shows either way.
 func logFailure(dir, name, cwd, message string) string {
-	failureLogMu.Lock()
-	defer failureLogMu.Unlock()
 	if dir == "" {
 		dir = configDir()
 	}
-	dir = filepath.Join(dir, "failures")
-	err := appendFailure(dir, name, cwd, message)
-	if err != nil {
-		return message + "\nCouldn't save failure log: " + err.Error()
-	}
-	return message
-}
-
-func appendFailure(dir, name, cwd, message string) error {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
-	// Bound metadata too: an action line can be much larger than its label.
-	if len(name) > 16*1024 {
-		name = name[:16*1024] + " [truncated]"
+	logline.OpenFile(filepath.Join(dir, failureLogName)).Error("command failed",
+		"name", bound(name, 16*1024), "directory", bound(cwd, 16*1024), "error", bound(message, 64*1024))
+	return message
+}
+
+// bound cuts text past n bytes: an action line can be much larger than its label.
+func bound(text string, n int) string {
+	if len(text) > n {
+		return text[:n] + " [truncated]"
 	}
-	if len(cwd) > 16*1024 {
-		cwd = cwd[:16*1024] + " [truncated]"
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	path := filepath.Join(dir, fmt.Sprintf("at-%d.log", os.Getpid()))
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return err
-		}
-		for _, e := range entries {
-			if !strings.HasPrefix(e.Name(), "at-") ||
-				!(strings.HasSuffix(e.Name(), ".log") || strings.HasSuffix(e.Name(), ".log.1")) {
-				continue
-			}
-			if info, err := e.Info(); err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > 30*24*time.Hour {
-				_ = os.Remove(filepath.Join(dir, e.Name()))
-			}
-		}
-	}
-	if len(message) > 64*1024 {
-		message = message[:64*1024] + " [truncated]"
-	}
-	entry := struct {
-		Time, Name, Directory, Error string
-	}{time.Now().UTC().Format(time.RFC3339Nano), name, cwd, message}
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	if info, err := os.Stat(path); err == nil && info.Size()+int64(len(data)) > failureLogBytes {
-		if err := os.Remove(path + ".1"); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if err := os.Rename(path, path+".1"); err != nil {
-			return err
-		}
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	return err
+	return text
 }
