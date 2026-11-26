@@ -137,3 +137,58 @@ func TestFailureLogThatCantBeWrittenStillReturnsTheError(t *testing.T) {
 		t.Fatalf("lost the original error: %q", got)
 	}
 }
+
+// TestFailureHistoryMasksCredentials: the log ships to the NAS's pile, so a failure
+// whose output, arguments or folder hold a credential is written with it masked, each
+// shape logline.Redact knows, while the caller still shows the original.
+func TestFailureHistoryMasksCredentials(t *testing.T) {
+	secrets := map[string]string{
+		"a URL parameter":     "https://auth.example/callback?code=c0de-s3cret&state=st4te-s3cret",
+		"a bearer header":     "Authorization: Bearer b34rer-s3cret-value",
+		"basic credentials":   "Basic dXNlcjpwYXNzd29yZA==",
+		"a NAME=value":        "PASSWORD=opensesame",
+		"a JSON field":        `{"password": "hunter2-json"}`,
+		"a Bitwarden session": `BW_SESSION="Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA=="`,
+		"a flag":              "--client-secret sh-h-h-flag",
+		"a password in a URL": "https://nelson:hunter2-url@forgejo.romaine.life/a/b.git",
+		"a JWT":               "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N",
+		"a GitHub token":      "ghp_0123456789abcdefghij0123456789abcdef",
+		"an OpenBao token":    "hvs.CAESIJ0123456789abcdefghijklmnop",
+	}
+	values := map[string]string{
+		"a URL parameter":     "c0de-s3cret",
+		"a bearer header":     "b34rer-s3cret-value",
+		"basic credentials":   "dXNlcjpwYXNzd29yZA==",
+		"a NAME=value":        "opensesame",
+		"a JSON field":        "hunter2-json",
+		"a Bitwarden session": "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA==",
+		"a flag":              "sh-h-h-flag",
+		"a password in a URL": "hunter2-url",
+		"a JWT":               "dozjgNryP4J3jVmNHl0w5N",
+		"a GitHub token":      "ghp_0123456789abcdefghij0123456789abcdef",
+		"an OpenBao token":    "hvs.CAESIJ0123456789abcdefghijklmnop",
+	}
+	dir := t.TempDir()
+	for shape, text := range secrets {
+		message := "bw-grant: exit status 1: " + text
+		if got := logFailure(dir, "hubitat-device update "+text, `D:\x `+text, message); got != message {
+			t.Fatalf("%s: the message shown changed: %q", shape, got)
+		}
+		entries := failureHistory(t, dir)
+		last := entries[len(entries)-1]
+		for _, key := range []string{"name", "directory", "error"} {
+			if strings.Contains(last[key], values[shape]) || !strings.Contains(last[key], logline.Marker) {
+				t.Errorf("%s: %s written as %q", shape, key, last[key])
+			}
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(dir, failureLogName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for shape, value := range values {
+		if strings.Contains(string(data), value) {
+			t.Errorf("%s reached the log file", shape)
+		}
+	}
+}

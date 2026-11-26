@@ -68,9 +68,13 @@ on Windows, or `fzt-automate.log` in the platform's config directory elsewhere
 and the `error` text as fields, e.g.
 `2026-11-26T09:12:03.512-08:00 pid=4120 error command failed name=lights directory=D:\repos error="lights can't run: exit status 1"`.
 Every menu appends to the one file, a line per write so simultaneous menus keep
-their lines whole; past 1 MiB it moves to `fzt-automate.log.old`. Records limit
-the name and directory to 16 KiB and the error text to 64 KiB; the existing error
-displays and program exit codes are unchanged.
+their lines whole; past 1 MiB it moves to `fzt-automate.log.old`. Every field can
+hold text from outside the program (an action line with arguments typed at run time,
+a failed command's output), so each is masked with logline's `Redact` before it is
+written: credentials (URL parameters, auth headers, `PASSWORD=`-style and JSON fields,
+`BW_SESSION`, secret flags, passwords in URLs, JWTs, GitHub and OpenBao tokens) become
+`***`. Records limit the name and directory to 16 KiB and the error text to 64 KiB;
+the existing error displays and program exit codes are unchanged.
 
 The output box stays open when a program cannot start. A program that starts in
 a new tmux window and then fails keeps its pane through `remain-on-exit=failed`;
