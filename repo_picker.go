@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -83,46 +84,84 @@ func gitCredentialToken(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("git has no sign-in for %s", host)
 }
 
-// forgejoList reads every page of a Forgejo list endpoint.
-func forgejoList(ctx context.Context, token, endpoint string, wrapped bool) ([]forgejoRepo, error) {
-	var all []forgejoRepo
-	for page := 1; ; page++ {
-		sep := "?"
-		if strings.Contains(endpoint, "?") {
-			sep = "&"
-		}
-		req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s%s%slimit=50&page=%d", forgejoAPI, endpoint, sep, page), nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "token "+token)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return nil, unreachable{err}
-		}
-		var repos []forgejoRepo
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return nil, fmt.Errorf("Forgejo answered %s", resp.Status)
-		}
-		if wrapped {
-			var body struct {
-				Data []forgejoRepo `json:"data"`
-			}
-			err = json.NewDecoder(resp.Body).Decode(&body)
-			repos = body.Data
-		} else {
-			err = json.NewDecoder(resp.Body).Decode(&repos)
-		}
-		resp.Body.Close()
-		if err != nil {
-			return nil, fmt.Errorf("Forgejo's answer can't be read: %w", err)
-		}
-		all = append(all, repos...)
-		if len(repos) < 50 {
-			return all, nil
-		}
+// forgejoPageSize is the most Forgejo gives in one page.
+const forgejoPageSize = 50
+
+// forgejoPage reads one page of a Forgejo list endpoint, and the total its
+// answer says the list has (-1 when it doesn't say).
+func forgejoPage(ctx context.Context, token, endpoint string, wrapped bool, n int) ([]forgejoRepo, int, error) {
+	sep := "?"
+	if strings.Contains(endpoint, "?") {
+		sep = "&"
 	}
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s%s%slimit=%d&page=%d", forgejoAPI, endpoint, sep, forgejoPageSize, n), nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Authorization", "token "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, 0, unreachable{err}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, 0, fmt.Errorf("Forgejo answered %s", resp.Status)
+	}
+	var repos []forgejoRepo
+	if wrapped {
+		var body struct {
+			Data []forgejoRepo `json:"data"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&body)
+		repos = body.Data
+	} else {
+		err = json.NewDecoder(resp.Body).Decode(&repos)
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("Forgejo's answer can't be read: %w", err)
+	}
+	total := -1
+	if t, err := strconv.Atoi(resp.Header.Get("X-Total-Count")); err == nil {
+		total = t
+	}
+	return repos, total, nil
+}
+
+// forgejoList reads every page of a Forgejo list endpoint: the first, then all
+// the rest its total says there are at once, as at-claude's repo list does,
+// rather than one after another, each a round trip on a slow link (FORGEJO-67).
+// With no total, pages are read in turn until a short one.
+func forgejoList(ctx context.Context, token, endpoint string, wrapped bool) ([]forgejoRepo, error) {
+	first, total, err := forgejoPage(ctx, token, endpoint, wrapped, 1)
+	if err != nil {
+		return nil, err
+	}
+	if total < 0 {
+		all := first
+		for n, got := 2, first; len(got) == forgejoPageSize; n++ {
+			if got, _, err = forgejoPage(ctx, token, endpoint, wrapped, n); err != nil {
+				return nil, err
+			}
+			all = append(all, got...)
+		}
+		return all, nil
+	}
+	pages := (total + forgejoPageSize - 1) / forgejoPageSize
+	rest := make([][]forgejoRepo, max(pages-1, 0))
+	errs := make([]error, len(rest))
+	var wg sync.WaitGroup
+	for i := range rest {
+		wg.Go(func() { rest[i], _, errs[i] = forgejoPage(ctx, token, endpoint, wrapped, i+2) })
+	}
+	wg.Wait()
+	all := first
+	for i := range rest {
+		if errs[i] != nil {
+			return nil, errs[i]
+		}
+		all = append(all, rest[i]...)
+	}
+	return all, nil
 }
 
 // unreachable is a request that never got an answer. Its message fits the
@@ -144,8 +183,8 @@ func forgejoRepos(ctx context.Context) (repos []forgejoRepo, starred map[string]
 	var all, stars []forgejoRepo
 	var starErr error
 	var wg sync.WaitGroup
-	wg.Go(func() { stars, starErr = forgejoList(ctx, token, "/user/starred", false) })
-	all, err = forgejoList(ctx, token, "/repos/search?sort=updated&order=desc", true)
+	wg.Go(func() { stars, starErr = forgejoList(ctx, token, "/user/starred?brief=true", false) })
+	all, err = forgejoList(ctx, token, "/repos/search?sort=updated&order=desc&brief=true", true)
 	wg.Wait()
 	if err == nil {
 		err = starErr

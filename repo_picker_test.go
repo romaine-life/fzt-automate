@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -146,6 +147,9 @@ func TestForgejoReposReadsEveryPageAndLeavesOutMirrorsAndArchived(t *testing.T) 
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
+		if r.URL.Query().Get("brief") != "true" {
+			t.Errorf("%s asked for without brief=true", r.URL)
+		}
 		var page int
 		fmt.Sscan(r.URL.Query().Get("page"), &page)
 		switch r.URL.Path {
@@ -178,6 +182,45 @@ func TestForgejoReposReadsEveryPageAndLeavesOutMirrorsAndArchived(t *testing.T) 
 	forgejoToken = func(context.Context) (string, error) { return "wrong", nil }
 	if _, _, err := forgejoRepos(context.Background()); err == nil || !strings.Contains(err.Error(), "401") {
 		t.Fatalf("err = %v, want Forgejo's refusal", err)
+	}
+}
+
+func TestForgejoListReadsTheRestOfTheTotalAtOnce(t *testing.T) {
+	var inFlight, most atomic.Int32
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var page int
+		fmt.Sscan(r.URL.Query().Get("page"), &page)
+		w.Header().Set("X-Total-Count", "140")
+		if page > 1 {
+			// Pages 2 and 3 are held until both are asked for: read one after
+			// the other, the second never would be, and the test times out.
+			if n := inFlight.Add(1); n > most.Load() {
+				most.Store(n)
+			}
+			if most.Load() == 2 {
+				close(release)
+			}
+			<-release
+		}
+		lo, hi := (page-1)*50, min(page*50, 140)
+		var data []forgejoRepo
+		for i := lo; i < hi; i++ {
+			data = append(data, forgejoRepo{FullName: fmt.Sprintf("o/r%d", i), Name: fmt.Sprintf("r%d", i)})
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": data})
+	}))
+	defer srv.Close()
+	defer func(api string) { forgejoAPI = api }(forgejoAPI)
+	forgejoAPI = srv.URL
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	got, err := forgejoList(ctx, "t", "/repos/search", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 140 || got[0].Name != "r0" || got[139].Name != "r139" {
+		t.Fatalf("got %d repos", len(got))
 	}
 }
 
